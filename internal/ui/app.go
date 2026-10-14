@@ -22,9 +22,12 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
 	"golang.org/x/image/font/gofont/gomono"
 	"golang.org/x/image/font/gofont/goregular"
+	"loghelp"
 	"loghelp/internal/core"
 	"loghelp/internal/diagnostics"
 )
+
+var appVersion = loghelp.Version
 
 type page struct {
 	state                                            core.TabState
@@ -140,7 +143,7 @@ func Run() error {
 	go w.monitor()
 	defer w.shutdown()
 	ebiten.SetWindowSize(w.width, w.height)
-	ebiten.SetWindowTitle("LogHelp — Android 日志工作台")
+	ebiten.SetWindowTitle("LogHelp " + appVersion + " — Android 日志工作台")
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	ebiten.SetWindowSizeLimits(1000, 720, -1, -1)
 	ebiten.SetWindowClosingHandled(true)

@@ -57,6 +57,8 @@ try {
 
     New-Item -ItemType Directory -Force -Path $artifactRoot | Out-Null
     $files = @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'internal') -Filter '*.go' -Recurse)
+    $files += @(Get-ChildItem -LiteralPath $projectRoot -Filter '*.go')
+    $files += @(Get-Item -LiteralPath (Join-Path $projectRoot 'VERSION'))
     if ($Desktop) { $files += @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'cmd') -Filter '*.go' -Recurse) }
     $files += @(Get-Item -LiteralPath (Join-Path $projectRoot 'go.mod'),(Join-Path $projectRoot 'go.sum'))
     $fingerprint = (($files | Sort-Object FullName | ForEach-Object { $_.FullName + ':' + (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash }) -join "`n")

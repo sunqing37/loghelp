@@ -8,6 +8,8 @@
 
 见 [0.0.1 发布说明](docs/releases/0.0.1.md) 和 [更新记录](CHANGELOG.md)。
 
+源码构建时会将 `VERSION` 嵌入程序，版本号显示在窗口标题、主界面顶部和设置页。修改版本文件后，构建脚本会识别变更并重新编译。
+
 ## 当前功能
 
 - 从 PATH 自动查找 ADB，支持选择 executable 或 platform-tools 目录、版本校验和设置保存。

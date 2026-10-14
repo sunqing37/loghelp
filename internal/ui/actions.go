@@ -508,7 +508,7 @@ func (w *app) exportTo(p *page, path string, jsonLines, selected bool) {
 func (w *app) settings() { w.settingsFor(w.config) }
 func (w *app) settingsFor(initial core.Config) {
 	inputs := map[string]*boundedInput{}
-	box := column(w.heading("连接与工作区"), w.muted("设置只保存在当前电脑"))
+	box := column(w.muted("LogHelp v"+appVersion), w.heading("连接与工作区"), w.muted("设置只保存在当前电脑"))
 	add := func(key, label, value string) {
 		entry := w.input(value, "", nil, nil)
 		inputs[key] = entry

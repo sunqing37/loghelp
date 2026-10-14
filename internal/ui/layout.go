@@ -99,7 +99,7 @@ func (w *app) rebuild() {
 	w.connectionLabel = nil
 	c := w.colors()
 	root := widget.NewContainer(widget.ContainerOpts.BackgroundImage(uiimage.NewNineSliceColor(c.bg)), widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(1), widget.GridLayoutOpts.Stretch([]bool{true}, []bool{false, true, false}))))
-	brand := row(w.action("L", "active", func() { w.help() }), w.heading("LogHelp"), w.muted("ANDROID LOG WORKSPACE"))
+	brand := row(w.action("L", "active", func() { w.help() }), w.heading("LogHelp"), w.muted("v"+appVersion), w.muted("ANDROID LOG WORKSPACE"))
 	chrome := stretchRow(brand, row(w.action("打开文件", "quiet", w.openFile), w.action("终端", "quiet", w.openTerminal), w.action("录制管理", "quiet", w.recordings), w.action("设置", "quiet", w.settings)))
 	root.AddChild(w.inset(chrome, 12, c.surface))
 	w.ui = &ebitenui.UI{Container: root, PostRenderHook: w.drawPanels}

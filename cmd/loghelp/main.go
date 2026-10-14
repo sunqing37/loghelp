@@ -54,13 +54,24 @@ func handleReleaseQuery(args []string) (bool, error) {
 	flags := flag.NewFlagSet("--check-update", flag.ContinueOnError)
 	current := flags.String("current-version", loghelp.Version, "当前产品版本（仅用于只读检查）")
 	revision := flags.Uint64("current-revision", loghelp.Revision, "当前修订号（仅用于只读检查）")
+	proxy := flags.String("update-proxy", "", "更新代理：空=环境变量，direct=直连，或完整代理 URL；未指定则使用已保存设置")
 	if err := flags.Parse(args[1:]); err != nil {
 		return true, err
 	}
 	if flags.NArg() != 0 {
 		return true, fmt.Errorf("无法识别的检查更新参数")
 	}
-	update, err := core.CheckRelease(context.Background(), *current, *revision)
+	config, err := core.LoadConfig()
+	if err != nil {
+		return true, err
+	}
+	options := core.UpdateNetworkOptions{Proxy: config.UpdateProxy}
+	flags.Visit(func(value *flag.Flag) {
+		if value.Name == "update-proxy" {
+			options.Proxy = *proxy
+		}
+	})
+	update, err := core.CheckRelease(context.Background(), *current, *revision, options)
 	if err != nil {
 		return true, err
 	}

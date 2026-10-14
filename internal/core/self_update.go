@@ -38,7 +38,7 @@ func AutomaticUpdateSupported() bool {
 }
 
 // PrepareUpdate downloads and verifies the release without changing the running app.
-func PrepareUpdate(ctx context.Context, release ReleaseUpdate) (_ *PreparedUpdate, err error) {
+func PrepareUpdate(ctx context.Context, release ReleaseUpdate, options UpdateNetworkOptions) (_ *PreparedUpdate, err error) {
 	if !AutomaticUpdateSupported() {
 		return nil, fmt.Errorf("此平台暂不支持自动安装，请从发布页面手动更新")
 	}
@@ -74,7 +74,7 @@ func PrepareUpdate(ctx context.Context, release ReleaseUpdate) (_ *PreparedUpdat
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 	archive := filepath.Join(dir, "release.zip")
-	if err = downloadUpdate(ctx, release, digest, archive); err != nil {
+	if err = downloadUpdate(ctx, release, digest, archive, options); err != nil {
 		return nil, err
 	}
 	staged := filepath.Join(dir, "loghelp-new.exe")
@@ -115,27 +115,35 @@ func releaseDigest(value string) (string, error) {
 	return strings.ToLower(value), nil
 }
 
-func downloadUpdate(ctx context.Context, release ReleaseUpdate, digest, destination string) error {
+func downloadUpdate(ctx context.Context, release ReleaseUpdate, digest, destination string, options UpdateNetworkOptions) error {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, release.DownloadURL, nil)
 	if err != nil {
 		return err
 	}
 	request.Header.Set("User-Agent", "LogHelp-Updater")
-	client := &http.Client{Timeout: 5 * time.Minute, CheckRedirect: func(req *http.Request, via []*http.Request) error {
+	client, err := newUpdateClient(options.Proxy, 5*time.Minute)
+	if err != nil {
+		return err
+	}
+	defer client.CloseIdleConnections()
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		host := req.URL.Hostname()
 		if len(via) >= 5 || req.URL.Scheme != "https" || req.URL.User != nil ||
 			(host != "github.com" && host != "release-assets.githubusercontent.com" && host != "objects.githubusercontent.com") {
-			return fmt.Errorf("更新下载重定向地址无效")
+			return &updateRequestError{message: "更新下载重定向地址无效，已取消下载"}
 		}
 		return nil
-	}}
+	}
 	response, err := client.Do(request)
 	if err != nil {
-		return fmt.Errorf("下载更新失败：%w", err)
+		networkErr, _ := updateConnectionError(err)
+		return fmt.Errorf("下载更新失败：%w", networkErr)
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("下载更新失败，GitHub 返回 HTTP %d", response.StatusCode)
+		data, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
+		statusErr, _ := releaseHTTPError(response, data)
+		return fmt.Errorf("下载更新失败：%w", statusErr)
 	}
 	file, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {

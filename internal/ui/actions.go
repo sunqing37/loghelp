@@ -502,7 +502,15 @@ func (w *app) exportTo(p *page, path string, jsonLines, selected bool) {
 func (w *app) settings() { w.settingsFor(w.config) }
 func (w *app) settingsFor(initial core.Config) {
 	inputs := map[string]*boundedInput{}
-	box := w.column(w.stretchRow(w.label("LogHelp "+appVersionLabel), w.action("检查更新", "quiet", w.showUpdates)), w.heading("连接与工作区"), w.muted("设置只保存在当前电脑"))
+	proxySettings, updateProxy := w.updateProxySettings(initial.UpdateProxy)
+	box := w.column(w.stretchRow(w.label("LogHelp "+appVersionLabel), w.action("检查更新", "quiet", func() {
+		proxy, err := updateProxy()
+		if err != nil {
+			w.showNestedDialog("更新代理设置错误", w.column(w.label(err.Error())))
+			return
+		}
+		w.showUpdatesWithProxy(proxy)
+	})), w.heading("连接与工作区"), w.muted("设置只保存在当前电脑"))
 	add := func(key, label, value string) {
 		entry := w.input(value, "", nil, nil)
 		inputs[key] = entry
@@ -535,7 +543,7 @@ func (w *app) settingsFor(initial core.Config) {
 	}), w.button("选择录制目录", func() {
 		w.selectDirectory(inputs["directory"].GetText(), func(path string) { inputs["directory"].SetText(path) })
 	})))
-	box.AddChild(w.heading("外观与阅读"))
+	box.AddChild(proxySettings, w.heading("外观与阅读"))
 	theme := w.input(initial.Theme, "", nil, nil)
 	inputs["theme"] = theme
 	var dark, light *widget.Button
@@ -616,6 +624,12 @@ func (w *app) settingsFor(initial core.Config) {
 	box.AddChild(w.button("清除 Shell 历史", func() { w.config.ShellHistory = nil; w.save() }))
 	saveButton := w.action("保存设置", "primary", func() {
 		candidate := w.config
+		proxy, err := updateProxy()
+		if err != nil {
+			w.showNestedDialog("更新代理设置错误", w.column(w.label(err.Error())))
+			return
+		}
+		candidate.UpdateProxy = proxy
 		if resetColumnWidths {
 			candidate.ColumnWidths = nil
 		}

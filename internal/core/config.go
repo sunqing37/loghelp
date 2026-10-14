@@ -23,6 +23,7 @@ type TabState struct {
 type Config struct {
 	Version          int               `json:"version"`
 	ADB              string            `json:"adb,omitempty"`
+	UpdateProxy      string            `json:"update_proxy,omitempty"`
 	Directory        string            `json:"directory,omitempty"`
 	Theme            string            `json:"theme"`
 	FontSize         float32           `json:"font_size"`

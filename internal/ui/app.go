@@ -103,6 +103,7 @@ type app struct {
 	fileDialogOpen                                                bool
 	updateInProgress                                              bool
 	updateRequests                                                int
+	updateCheckCancel                                             context.CancelFunc
 	fileDirectory                                                 string
 	cursorShape                                                   ebiten.CursorShapeType
 	statusLabel                                                   *widget.Text

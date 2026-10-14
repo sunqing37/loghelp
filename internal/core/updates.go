@@ -4,13 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"runtime"
 	"strconv"
 	"strings"
-	"time"
 )
 
 const releaseRepository = "https://github.com/sunqing37/loghelp/releases/"
@@ -49,43 +46,15 @@ func stableVersion(value string) ([3]uint64, error) {
 	return version, nil
 }
 
-func CheckRelease(ctx context.Context, current string, currentRevision uint64) (ReleaseUpdate, error) {
+func CheckRelease(ctx context.Context, current string, currentRevision uint64, options UpdateNetworkOptions) (ReleaseUpdate, error) {
 	var update ReleaseUpdate
 	installed, err := stableVersion(current)
 	if err != nil {
 		return update, err
 	}
-	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.github.com/repos/sunqing37/loghelp/releases/latest", nil)
+	data, err := fetchReleaseWithRetry(ctx, current, currentRevision, options)
 	if err != nil {
 		return update, err
-	}
-	request.Header.Set("Accept", "application/vnd.github+json")
-	request.Header.Set("User-Agent", fmt.Sprintf("LogHelp/%s-r%d", current, currentRevision))
-	client := &http.Client{Timeout: 15 * time.Second}
-	response, err := client.Do(request)
-	if err != nil {
-		return update, fmt.Errorf("无法连接 GitHub，请检查网络后重试：%w", err)
-	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		switch response.StatusCode {
-		case http.StatusNotFound:
-			return update, fmt.Errorf("仓库暂时没有正式发布版本")
-		case http.StatusForbidden, http.StatusTooManyRequests:
-			return update, fmt.Errorf("GitHub 暂时限制请求，请稍后重试")
-		default:
-			return update, fmt.Errorf("GitHub 返回 HTTP %d，请稍后重试", response.StatusCode)
-		}
-	}
-	const maxResponse = 2 << 20
-	data, err := io.ReadAll(io.LimitReader(response.Body, maxResponse+1))
-	if err != nil {
-		return update, fmt.Errorf("读取版本信息失败：%w", err)
-	}
-	if len(data) > maxResponse {
-		return update, fmt.Errorf("GitHub 版本信息过大")
 	}
 	var release struct {
 		Tag        string `json:"tag_name"`

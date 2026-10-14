@@ -1,0 +1,35 @@
+# Build output and local tools
+/bin/
+/.tools/
+/dist/
+*.exe
+*.exe~
+*.test
+*.out
+
+# Local logs and profiling artifacts
+/artifacts/
+*.log
+*.pprof
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Python cache used by helper scripts
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Editor and operating system files
+/.idea/
+/.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini

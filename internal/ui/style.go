@@ -24,17 +24,19 @@ func (w *app) colors() palette {
 type skinKey struct {
 	fill, border color.NRGBA
 	radius       int
+	scale        float64
 }
 
 func (w *app) skin(fill, border color.NRGBA, radius int) *uiimage.NineSlice {
 	if w.skins == nil {
 		w.skins = map[skinKey]*uiimage.NineSlice{}
 	}
-	key := skinKey{fill, border, radius}
+	key := skinKey{fill, border, radius, w.displayScale}
 	if s := w.skins[key]; s != nil {
 		return s
 	}
-	pad := radius + 2
+	radius = w.px(radius)
+	pad := radius + w.px(2)
 	size := 2*pad + 1
 	img := image.NewNRGBA(image.Rect(0, 0, size, size))
 	half := float64(size) / 2
@@ -45,7 +47,7 @@ func (w *app) skin(fill, border color.NRGBA, radius int) *uiimage.NineSlice {
 			dy := math.Abs(float64(y)+0.5-half) - half + float64(radius)
 			d := math.Hypot(math.Max(dx, 0), math.Max(dy, 0)) + math.Min(math.Max(dx, dy), 0) - float64(radius)
 			a := clamp(0.5 - d)
-			inside := clamp(-0.5 - d)
+			inside := clamp(0.5 - float64(w.px(1)) - d)
 			if a == 0 {
 				continue
 			}
@@ -75,15 +77,15 @@ func (w *app) action(s, kind string, fn func()) *widget.Button {
 	case "danger":
 		fg = c.danger
 	}
-	return widget.NewButton(widget.ButtonOpts.WidgetOpts(widget.WidgetOpts.MinSize(32, controlHeight), w.hoverCursor(ebiten.CursorShapePointer)), widget.ButtonOpts.Image(&widget.ButtonImage{Idle: w.skin(idle, border, 6), Hover: w.skin(hover, c.line, 6), Pressed: w.skin(pressed, c.accent, 6), Disabled: w.skin(c.surface, c.line, 6)}), widget.ButtonOpts.Text(s, &w.uiFace, &widget.ButtonTextColor{Idle: fg, Hover: fg, Pressed: fg, Disabled: c.muted}), widget.ButtonOpts.TextPadding(&widget.Insets{Left: 12, Right: 12, Top: 8, Bottom: 8}), widget.ButtonOpts.ClickedHandler(func(*widget.ButtonClickedEventArgs) { fn() }))
+	return widget.NewButton(widget.ButtonOpts.WidgetOpts(widget.WidgetOpts.MinSize(w.px(32), w.px(controlHeight)), w.hoverCursor(ebiten.CursorShapePointer)), widget.ButtonOpts.Image(&widget.ButtonImage{Idle: w.skin(idle, border, 6), Hover: w.skin(hover, c.line, 6), Pressed: w.skin(pressed, c.accent, 6), Disabled: w.skin(c.surface, c.line, 6)}), widget.ButtonOpts.Text(s, &w.uiFace, &widget.ButtonTextColor{Idle: fg, Hover: fg, Pressed: fg, Disabled: c.muted}), widget.ButtonOpts.TextPadding(&widget.Insets{Left: w.px(12), Right: w.px(12), Top: w.px(8), Bottom: w.px(8)}), widget.ButtonOpts.ClickedHandler(func(*widget.ButtonClickedEventArgs) { fn() }))
 }
 func (w *app) inset(content widget.PreferredSizeLocateableWidget, pad int, fill color.NRGBA) *widget.Container {
-	box := widget.NewContainer(widget.ContainerOpts.BackgroundImage(uiimage.NewNineSliceColor(fill)), widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(1), widget.GridLayoutOpts.Stretch([]bool{true}, []bool{true}), widget.GridLayoutOpts.Padding(widget.NewInsetsSimple(pad)))))
+	box := widget.NewContainer(widget.ContainerOpts.BackgroundImage(uiimage.NewNineSliceColor(fill)), widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(1), widget.GridLayoutOpts.Stretch([]bool{true}, []bool{true}), widget.GridLayoutOpts.Padding(widget.NewInsetsSimple(w.px(pad))))))
 	box.AddChild(content)
 	return box
 }
-func stretchRow(left, right widget.PreferredSizeLocateableWidget) *widget.Container {
-	box := widget.NewContainer(widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(2), widget.GridLayoutOpts.Stretch([]bool{true, false}, nil), widget.GridLayoutOpts.Spacing(12, 0))))
+func (w *app) stretchRow(left, right widget.PreferredSizeLocateableWidget) *widget.Container {
+	box := widget.NewContainer(widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(2), widget.GridLayoutOpts.Stretch([]bool{true, false}, nil), widget.GridLayoutOpts.Spacing(w.px(12), 0))))
 	box.AddChild(left, right)
 	return box
 }

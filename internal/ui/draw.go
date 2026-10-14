@@ -35,7 +35,7 @@ func (w *app) highlightSpans(screen *ebiten.Image, s string, x, y float64, spans
 		width, _ := text.Measure(part, w.face, 0)
 		c := base
 		if highlight {
-			vector.FillRect(screen, float32(x), float32(y), float32(width), float32(w.config.FontSize+3), rgb(234, 184, 91), false)
+			vector.FillRect(screen, float32(x), float32(y), float32(width), float32(w.fontSize()+float64(w.px(3))), rgb(234, 184, 91), false)
 			c = rgb(35, 42, 55)
 		}
 		w.paint(screen, part, x, y, c)
@@ -105,20 +105,20 @@ type logColumn struct {
 
 func (w *app) logColumns(width int) []logColumn {
 	scale := float64(w.config.FontSize) / 14
-	levelWidth := w.columnWidth("level", 42)
+	levelWidth := w.columnWidth("level", w.px(42))
 	cols := []logColumn{{"level", "级别", levelWidth}}
 	used := levelWidth
 	names := map[string]string{"time": "时间", "pid": "PID", "tid": "TID", "tag": "TAG", "package": "应用", "process": "进程"}
 	widths := map[string]int{"time": 190, "pid": 84, "tid": 84, "tag": 174, "package": 224, "process": 220}
 	for _, key := range w.config.Columns {
 		if n := widths[key]; n > 0 {
-			n = int(float64(n) * scale)
+			n = w.px(int(float64(n) * scale))
 			n = w.columnWidth(key, n)
 			cols = append(cols, logColumn{key, names[key], n})
 			used += n
 		}
 	}
-	cols = append(cols, logColumn{"message", "消息", w.columnWidth("message", max(width-used-12, 320))})
+	cols = append(cols, logColumn{"message", "消息", w.columnWidth("message", max(width-used-w.px(12), w.px(320)))})
 	return cols
 }
 func (w *app) tableWidth(width int) int {
@@ -224,16 +224,16 @@ func (w *app) drawPanels(screen *ebiten.Image) {
 			for _, col := range cols {
 				r := image.Rect(x, header.Min.Y, x+col.width, header.Max.Y).Intersect(header)
 				if !r.Empty() {
-					w.paintFace(canvas.SubImage(r).(*ebiten.Image), col.title, float64(x+12), headerTextY, w.smallFace, c.muted)
+					w.paintFace(canvas.SubImage(r).(*ebiten.Image), col.title, float64(x+w.px(12)), headerTextY, w.smallFace, c.muted)
 				}
 				x += col.width
 				lineColor := c.line
 				if !w.modal && (w.columnDrag.key == col.key || hover.key == col.key) {
 					lineColor = c.accent
 				}
-				vector.FillRect(canvas, float32(x-1), float32(header.Min.Y+5), 1, float32(max(header.Dy()-10, 1)), lineColor, false)
+				vector.FillRect(canvas, float32(x-w.px(1)), float32(header.Min.Y+w.px(5)), float32(w.px(1)), float32(max(header.Dy()-w.px(10), 1)), lineColor, false)
 			}
-			vector.FillRect(canvas, float32(header.Min.X), float32(header.Max.Y-1), float32(header.Dx()), 1, c.line, false)
+			vector.FillRect(canvas, float32(header.Min.X), float32(header.Max.Y-w.px(1)), float32(header.Dx()), float32(w.px(1)), c.line, false)
 		}
 	}
 	rows := w.visibleRows()
@@ -251,13 +251,13 @@ func (w *app) drawPanels(screen *ebiten.Image) {
 		selected := index == p.selected
 		if selected {
 			vector.FillRect(area, float32(rect.Min.X), float32(top), float32(rect.Dx()), float32(w.rowHeight()), c.selection, false)
-			vector.FillRect(area, float32(rect.Min.X), float32(top), 3, float32(w.rowHeight()), c.accent, false)
+			vector.FillRect(area, float32(rect.Min.X), float32(top), float32(w.px(3)), float32(w.rowHeight()), c.accent, false)
 		} else if !w.modal && mx >= rect.Min.X && mx < rect.Max.X && my >= top && my < top+w.rowHeight() {
 			vector.FillRect(area, float32(rect.Min.X), float32(top), float32(rect.Dx()), float32(w.rowHeight()), c.surface, false)
 		}
 		x := rect.Min.X - w.tableX
 		for _, col := range cols {
-			cellRect := image.Rect(x, top, x+col.width-8, min(top+w.rowHeight(), rect.Max.Y)).Intersect(rect)
+			cellRect := image.Rect(x, top, x+col.width-w.px(8), min(top+w.rowHeight(), rect.Max.Y)).Intersect(rect)
 			if !cellRect.Empty() {
 				canvas := area.SubImage(cellRect).(*ebiten.Image)
 				value := cellValue(e, col.key)
@@ -268,7 +268,7 @@ func (w *app) drawPanels(screen *ebiten.Image) {
 					if len(runes) > 500 {
 						value = string(runes[:500]) + "…"
 					}
-					messageX := float64(x + 12)
+					messageX := float64(x + w.px(12))
 					if start, end := p.rowRange(index); end-start > 1 {
 						prefix := fmt.Sprintf("[%d 行] ", end-start)
 						w.paint(canvas, prefix, messageX, y, c.muted)
@@ -290,13 +290,13 @@ func (w *app) drawPanels(screen *ebiten.Image) {
 							fg = rgb(193, 53, 78)
 						}
 					}
-					vector.FillRect(canvas, float32(x+9), float32(top+7), 23, float32(w.config.FontSize+4), color.NRGBA{fg.R, fg.G, fg.B, 24}, false)
-					w.paint(canvas, value, float64(x+15), y, fg)
+					vector.FillRect(canvas, float32(x+w.px(9)), float32(top+w.px(7)), float32(w.px(23)), float32(w.fontSize()+float64(w.px(4))), color.NRGBA{fg.R, fg.G, fg.B, 24}, false)
+					w.paint(canvas, value, float64(x+w.px(15)), y, fg)
 				} else {
 					if col.key == "tag" {
 						fg = c.text
 					}
-					w.paint(canvas, w.fit(value, float64(col.width-22)), float64(x+12), y, fg)
+					w.paint(canvas, w.fit(value, float64(col.width-w.px(22))), float64(x+w.px(12)), y, fg)
 				}
 			}
 			x += col.width
@@ -309,15 +309,15 @@ func (w *app) drawPanels(screen *ebiten.Image) {
 		}
 		tw, _ := text.Measure(title, w.titleFace, 0)
 		hw, _ := text.Measure(hint, w.uiFace, 0)
-		cy := float64(rect.Min.Y+rect.Dy()/2) - 35
+		cy := float64(rect.Min.Y+rect.Dy()/2) - float64(w.px(35))
 		w.paintFace(area, title, float64(rect.Min.X)+float64(rect.Dx())/2-tw/2, cy, w.titleFace, c.text)
-		w.paintFace(area, hint, float64(rect.Min.X)+float64(rect.Dx())/2-hw/2, cy+38, w.uiFace, c.muted)
+		w.paintFace(area, hint, float64(rect.Min.X)+float64(rect.Dx())/2-hw/2, cy+float64(w.px(38)), w.uiFace, c.muted)
 	}
 	if total := len(p.result.Rows); total > rows {
 		track := rect.Dy()
-		height := max(track*rows/total, 28)
+		height := max(track*rows/total, w.px(28))
 		offset := (track - height) * p.scroll / max(total-rows, 1)
-		vector.FillRect(area, float32(rect.Max.X-5), float32(rect.Min.Y+offset), 3, float32(height), c.line, false)
+		vector.FillRect(area, float32(rect.Max.X-w.px(5)), float32(rect.Min.Y+offset), float32(w.px(3)), float32(height), c.line, false)
 	}
 	if w.detailPanel == nil {
 		return
@@ -328,32 +328,32 @@ func (w *app) drawPanels(screen *ebiten.Image) {
 	}
 	detail := screen.SubImage(detailRect).(*ebiten.Image)
 	detail.Fill(c.surface)
-	vector.FillRect(detail, float32(detailRect.Min.X), float32(detailRect.Min.Y), float32(detailRect.Dx()), 1, c.line, false)
+	vector.FillRect(detail, float32(detailRect.Min.X), float32(detailRect.Min.Y), float32(detailRect.Dx()), float32(w.px(1)), c.line, false)
 	if p.selected < 0 || p.selected >= len(p.result.Rows) {
 		p.detailCache = detailTextCache{}
 		p.detailSelection = detailSelection{}
 		p.groupDetail = nil
 		p.groupDetailSource = nil
-		w.paintFace(detail, "点击日志查看完整内容、复制原文或展开上下文", float64(detailRect.Min.X+16), float64(detailRect.Min.Y+16), w.uiFace, c.muted)
+		w.paintFace(detail, "点击日志查看完整内容、复制原文或展开上下文", float64(detailRect.Min.X+w.px(16)), float64(detailRect.Min.Y+w.px(16)), w.uiFace, c.muted)
 		return
 	}
 	e := p.detailEntry(p.selected)
-	lines := w.detailLines(p, e, max(detailRect.Dx()-40, 1))
-	lineHeight := int(w.config.FontSize) + 8
-	visible := max((detailRect.Dy()-24)/lineHeight, 1)
+	lines := w.detailLines(p, e, max(detailRect.Dx()-w.px(40), 1))
+	lineHeight := w.detailLineHeight()
+	visible := max((detailRect.Dy()-w.px(24))/lineHeight, 1)
 	if w.config.Wrap {
 		p.detailX = 0
 	}
 	p.detailScroll = max(0, min(p.detailScroll, max(len(lines)-visible, 0)))
 	for i := p.detailScroll; i < len(lines) && i < p.detailScroll+visible; i++ {
-		w.highlightSpans(detail, lines[i], float64(detailRect.Min.X+16-p.detailX), float64(detailRect.Min.Y+12+(i-p.detailScroll)*lineHeight), p.detailCache.matches, p.detailCache.offsets[i], c.text)
-		w.drawDetailSelection(detail, p, i, float64(detailRect.Min.X+16-p.detailX), float64(detailRect.Min.Y+12+(i-p.detailScroll)*lineHeight))
+		w.highlightSpans(detail, lines[i], float64(detailRect.Min.X+w.px(16)-p.detailX), float64(detailRect.Min.Y+w.px(12)+(i-p.detailScroll)*lineHeight), p.detailCache.matches, p.detailCache.offsets[i], c.text)
+		w.drawDetailSelection(detail, p, i, float64(detailRect.Min.X+w.px(16)-p.detailX), float64(detailRect.Min.Y+w.px(12)+(i-p.detailScroll)*lineHeight))
 	}
 	if len(lines) > visible {
-		track := max(detailRect.Dy()-24, 1)
-		height := min(track, max(18, track*visible/len(lines)))
+		track := max(detailRect.Dy()-w.px(24), 1)
+		height := min(track, max(w.px(18), track*visible/len(lines)))
 		offset := (track - height) * p.detailScroll / max(len(lines)-visible, 1)
-		vector.FillRect(detail, float32(detailRect.Max.X-6), float32(detailRect.Min.Y+12+offset), 3, float32(height), c.muted, false)
+		vector.FillRect(detail, float32(detailRect.Max.X-w.px(6)), float32(detailRect.Min.Y+w.px(12)+offset), float32(w.px(3)), float32(height), c.muted, false)
 	}
 }
 
@@ -372,8 +372,8 @@ func (w *app) drawDetailDivider(screen *ebiten.Image) {
 		grip = c.accent
 	}
 	cy := rect.Min.Y + rect.Dy()/2
-	vector.FillRect(screen, float32(rect.Min.X), float32(cy), float32(rect.Dx()), 1, c.line, false)
-	vector.FillRect(screen, float32(rect.Min.X+rect.Dx()/2-20), float32(cy-1), 40, 3, grip, false)
+	vector.FillRect(screen, float32(rect.Min.X), float32(cy), float32(rect.Dx()), float32(w.px(1)), c.line, false)
+	vector.FillRect(screen, float32(rect.Min.X+rect.Dx()/2-w.px(20)), float32(cy-w.px(1)), float32(w.px(40)), float32(w.px(3)), grip, false)
 }
 
 func (w *app) wrap(s string, width float64) []string {
@@ -386,7 +386,7 @@ func (w *app) wrap(s string, width float64) []string {
 			lines = append(lines, "")
 			continue
 		}
-		maxRunes := max(int(width/float64(w.config.FontSize)*2)+8, 1)
+		maxRunes := max(int(width/w.fontSize()*2)+8, 1)
 		ends := make([]int, 1, maxRunes+1)
 		for len(line) > 0 {
 			ends = ends[:1]
@@ -449,7 +449,7 @@ func (w *app) mouse(p *page) {
 		}
 		if wheel != 0 && p.shell == nil {
 			if ebiten.IsKeyPressed(ebiten.KeyShift) {
-				w.tableX = max(0, min(w.tableX-int(wheel*55), max(w.tableWidth(rect.Dx())-rect.Dx(), 0)))
+				w.tableX = max(0, min(w.tableX-int(wheel*float64(w.px(55))), max(w.tableWidth(rect.Dx())-rect.Dx(), 0)))
 				return
 			}
 			p.follow = false
@@ -459,7 +459,7 @@ func (w *app) mouse(p *page) {
 	}
 	if w.detailPanel != nil && point.In(w.detailPanel.GetWidget().Rect) && wheel != 0 {
 		if ebiten.IsKeyPressed(ebiten.KeyShift) && !w.config.Wrap {
-			p.detailX = max(0, p.detailX-int(wheel*40))
+			p.detailX = max(0, p.detailX-int(wheel*float64(w.px(40))))
 		} else {
 			p.detailScroll = max(0, p.detailScroll-int(wheel*3))
 		}
@@ -495,8 +495,8 @@ func (w *app) drawTerminal(screen *ebiten.Image, p *page, rect image.Rectangle) 
 		return
 	}
 	cw, _ := text.Measure("M", w.face, 0)
-	cw = max(cw, 7)
-	ch := float64(w.config.FontSize + 4)
+	cw = max(cw, float64(w.px(7)))
+	ch := w.fontSize() + float64(w.px(4))
 	cols, rows := max(int(float64(rect.Dx())/cw), 2), max(int(float64(rect.Dy())/ch), 2)
 	if cols != state.cols || rows != state.rows {
 		state.cols, state.rows = cols, rows
@@ -521,6 +521,6 @@ func (w *app) drawTerminal(screen *ebiten.Image, p *page, rect image.Rectangle) 
 	}
 	if w.terminalFocus && state.vt.CursorVisible() && time.Now().UnixMilli()%1000 < 600 {
 		cursor := state.vt.Cursor()
-		vector.FillRect(screen, float32(float64(rect.Min.X)+float64(cursor.X)*cw), float32(float64(rect.Min.Y)+float64(cursor.Y+1)*ch-2), float32(cw), 2, color.White, false)
+		vector.FillRect(screen, float32(float64(rect.Min.X)+float64(cursor.X)*cw), float32(float64(rect.Min.Y)+float64(cursor.Y+1)*ch-float64(w.px(2))), float32(cw), float32(w.px(2)), color.White, false)
 	}
 }

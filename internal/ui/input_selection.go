@@ -2,6 +2,7 @@ package ui
 
 import (
 	"image"
+	"math"
 	"strings"
 	"time"
 	"unicode"
@@ -159,7 +160,7 @@ func (input *boundedInput) updateEditing() {
 			position := input.hitCaret(x)
 			delta := point.Sub(input.clickPosition)
 			double := !input.clickAt.IsZero() && time.Since(input.clickAt) <= 350*time.Millisecond &&
-				delta.X*delta.X+delta.Y*delta.Y <= 25 &&
+				float64(delta.X*delta.X+delta.Y*delta.Y) <= 25*input.displayScale*input.displayScale &&
 				!modifierDown("shift") && !modifierDown("mod") && !modifierDown("alt")
 			input.dragging, input.wordDragging = true, double
 			if double {
@@ -184,13 +185,13 @@ func (input *boundedInput) updateEditing() {
 	if input.dragging {
 		if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) || inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft) {
 			delta := point.Sub(input.clickPosition)
-			if !input.wordDragging && delta.X*delta.X+delta.Y*delta.Y > 25 {
+			if !input.wordDragging && float64(delta.X*delta.X+delta.Y*delta.Y) > 25*input.displayScale*input.displayScale {
 				input.clickAt = time.Time{}
 			}
 			position := input.hitCaret(x)
 			if input.wordDragging {
 				start, end := inputWordRange([]rune(input.GetText()), position)
-				if delta.X*delta.X+delta.Y*delta.Y <= 25 {
+				if float64(delta.X*delta.X+delta.Y*delta.Y) <= 25*input.displayScale*input.displayScale {
 					// Revealing the selected word may scroll text under a stationary
 					// pointer. Only physical dragging should expand that selection.
 					input.anchor, input.cursor = input.wordStart, input.wordEnd
@@ -295,12 +296,13 @@ func (input *boundedInput) drawInput(screen *ebiten.Image, rect image.Rectangle)
 	start, end := input.selectedRange()
 	runes := []rune(input.GetText())
 	caretX := input.prefixWidth(runes, input.cursor)
+	caretWidth := max(1, int(math.Round(input.displayScale)))
 	width := input.prefixWidth(runes, len(runes))
 	if input.IsFocused() {
-		input.scrollX = min(input.scrollX, float64(body.Dx()-1)-caretX)
+		input.scrollX = min(input.scrollX, float64(body.Dx()-caretWidth)-caretX)
 		input.scrollX = max(input.scrollX, -caretX)
 	}
-	input.scrollX = max(min(input.scrollX, 0), min(0, float64(body.Dx()-1)-width))
+	input.scrollX = max(min(input.scrollX, 0), min(0, float64(body.Dx()-caretWidth)-width))
 	x, y := float64(body.Min.X)+input.scrollX, float64(body.Min.Y)
 	_, height := text.Measure(" ", *input.face, 0)
 	value, foreground := input.GetText(), input.foreground
@@ -322,6 +324,6 @@ func (input *boundedInput) drawInput(screen *ebiten.Image, rect image.Rectangle)
 		text.Draw(canvas, string(runes[start:end]), *input.face, selected)
 	}
 	if input.IsFocused() && !input.GetWidget().Disabled && time.Since(input.caretAt)%(time.Second) < 500*time.Millisecond {
-		vector.FillRect(canvas, float32(x+caretX), float32(y), 1, float32(height), input.foreground, false)
+		vector.FillRect(canvas, float32(x+caretX), float32(y), float32(caretWidth), float32(height), input.foreground, false)
 	}
 }

@@ -105,7 +105,7 @@ func (w *app) filterHistory() {
 		favorites = append(favorites, name)
 	}
 	sort.Strings(favorites)
-	box := column()
+	box := w.column()
 	for _, name := range favorites {
 		name := name
 		box.AddChild(w.button("★ "+name, func() { w.closeModal(); w.filterInput.SetText(w.config.Favorites[name]); w.apply(p) }))
@@ -145,7 +145,7 @@ func (w *app) record() {
 	}
 }
 func (w *app) recordings() {
-	box := column()
+	box := w.column()
 	for _, collector := range w.hub.Items() {
 		collector := collector
 		status := collector.RecordingStatus()
@@ -153,8 +153,8 @@ func (w *app) recordings() {
 			continue
 		}
 		label := w.label(fmt.Sprintf("%s\n%s\n%d MiB · 持久化序号 %d · 未写入 %d · %s", collector.Serial, status.Directory, status.Bytes>>20, status.LastSeq, status.Unwritten, status.Error))
-		label.MaxWidth = 850
-		box.AddChild(label, row(w.button("暂停/继续", func() { collector.PauseRecording(!collector.RecordingStatus().Paused) }), w.button("停止录制", func() { w.async(func() error { return w.hub.StopRecording(collector) }, func() { w.recordings() }) }), w.button("离线打开", func() {
+		label.MaxWidth = float64(w.px(850))
+		box.AddChild(label, w.row(w.button("暂停/继续", func() { collector.PauseRecording(!collector.RecordingStatus().Paused) }), w.button("停止录制", func() { w.async(func() error { return w.hub.StopRecording(collector) }, func() { w.recordings() }) }), w.button("离线打开", func() {
 			w.closeModal()
 			w.syncInputs()
 			p := w.newPage(core.TabState{Name: "录制", File: status.Directory})
@@ -318,10 +318,10 @@ func (w *app) context() {
 				w.message("上下文", err.Error())
 				return
 			}
-			content := column()
+			content := w.column()
 			for _, e := range rows {
 				label := w.label(e.Raw)
-				label.MaxWidth = 850
+				label.MaxWidth = float64(w.px(850))
 				content.AddChild(label)
 			}
 			w.show("未过滤上下文 · 前后 20 条", content)
@@ -455,7 +455,7 @@ func (w *app) exportTo(p *page, path string, jsonLines, selected bool) {
 		}
 	}
 	ctx, cancel := context.WithCancel(w.ctx)
-	w.show("导出中", column(w.label("UTF-8 · 不修改原始录制"), w.button("取消", cancel)))
+	w.show("导出中", w.column(w.label("UTF-8 · 不修改原始录制"), w.button("取消", cancel)))
 	go func() {
 		temp, err := os.CreateTemp(filepath.Dir(path), ".loghelp-export-*")
 		count := 0
@@ -502,7 +502,7 @@ func (w *app) exportTo(p *page, path string, jsonLines, selected bool) {
 func (w *app) settings() { w.settingsFor(w.config) }
 func (w *app) settingsFor(initial core.Config) {
 	inputs := map[string]*boundedInput{}
-	box := column(stretchRow(w.label("LogHelp "+appVersionLabel), w.action("检查更新", "quiet", w.showUpdates)), w.heading("连接与工作区"), w.muted("设置只保存在当前电脑"))
+	box := w.column(w.stretchRow(w.label("LogHelp "+appVersionLabel), w.action("检查更新", "quiet", w.showUpdates)), w.heading("连接与工作区"), w.muted("设置只保存在当前电脑"))
 	add := func(key, label, value string) {
 		entry := w.input(value, "", nil, nil)
 		inputs[key] = entry
@@ -526,11 +526,11 @@ func (w *app) settingsFor(initial core.Config) {
 		} else {
 			toggle.SetText("已关闭")
 		}
-		box.AddChild(stretchRow(w.label(label), toggle))
+		box.AddChild(w.stretchRow(w.label(label), toggle))
 	}
 	add("adb", "ADB（空=PATH）", initial.ADB)
 	add("directory", "录制目录", initial.Directory)
-	box.AddChild(row(w.button("选择 ADB 文件", func() {
+	box.AddChild(w.row(w.button("选择 ADB 文件", func() {
 		w.selectADBFile(inputs["adb"].GetText(), func(path string) { inputs["adb"].SetText(path) })
 	}), w.button("选择录制目录", func() {
 		w.selectDirectory(inputs["directory"].GetText(), func(path string) { inputs["directory"].SetText(path) })
@@ -546,7 +546,7 @@ func (w *app) settingsFor(initial core.Config) {
 	} else {
 		dark.SetText("● 深色")
 	}
-	box.AddChild(stretchRow(w.label("界面主题"), row(dark, light)))
+	box.AddChild(w.stretchRow(w.label("界面主题"), w.row(dark, light)))
 	add("font", "字体大小", fmt.Sprint(initial.FontSize))
 	columns := w.input(strings.Join(initial.Columns, ","), "", nil, nil)
 	inputs["columns"] = columns
@@ -554,7 +554,7 @@ func (w *app) settingsFor(initial core.Config) {
 	for _, key := range initial.Columns {
 		selectedColumns[key] = true
 	}
-	columnButtons := row()
+	columnButtons := w.row()
 	for _, item := range []struct{ key, title string }{{"time", "时间"}, {"pid", "PID"}, {"tid", "TID"}, {"tag", "Tag"}, {"package", "应用"}, {"process", "进程"}} {
 		item := item
 		var button *widget.Button

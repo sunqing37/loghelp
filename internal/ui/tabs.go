@@ -46,7 +46,7 @@ func (w *app) updateTabDrag() {
 		return
 	}
 	dx, dy := x-drag.start.X, y-drag.start.Y
-	if dx*dx+dy*dy >= 36 {
+	if dx*dx+dy*dy >= w.px(6)*w.px(6) {
 		drag.dragging = true
 	}
 	if !drag.dragging || !point.In(view) || !ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
@@ -56,10 +56,10 @@ func (w *app) updateTabDrag() {
 	overflow := w.tabScroll.ContentRect().Dx() - view.Dx()
 	if overflow > 0 {
 		delta := 0.0
-		if x < view.Min.X+24 {
-			delta = -8
-		} else if x >= view.Max.X-24 {
-			delta = 8
+		if x < view.Min.X+w.px(24) {
+			delta = -float64(w.px(8))
+		} else if x >= view.Max.X-w.px(24) {
+			delta = float64(w.px(8))
 		}
 		w.tabScroll.ScrollLeft = max(0, min(w.tabScroll.ScrollLeft+delta/float64(overflow), 1))
 	}
@@ -152,10 +152,10 @@ func (w *app) drawTabDrag(screen *ebiten.Image) {
 	for _, tab := range w.tabWidgets {
 		if tab.page == w.tabDrag.page {
 			rect := tab.body.Rect
-			vector.StrokeRect(clip, float32(rect.Min.X+1), float32(rect.Min.Y+1), float32(rect.Dx()-2), float32(rect.Dy()-2), 2, w.colors().accent, false)
+			vector.StrokeRect(clip, float32(rect.Min.X+w.px(1)), float32(rect.Min.Y+w.px(1)), float32(rect.Dx()-w.px(2)), float32(rect.Dy()-w.px(2)), float32(w.px(2)), w.colors().accent, false)
 			break
 		}
 	}
-	marker = max(view.Min.X+1, min(marker, view.Max.X-2))
-	vector.FillRect(clip, float32(marker-1), float32(view.Min.Y+2), 3, float32(max(view.Dy()-4, 0)), w.colors().accent, false)
+	marker = max(view.Min.X+w.px(1), min(marker, view.Max.X-w.px(2)))
+	vector.FillRect(clip, float32(marker-w.px(1)), float32(view.Min.Y+w.px(2)), float32(w.px(3)), float32(max(view.Dy()-w.px(4), 0)), w.colors().accent, false)
 }

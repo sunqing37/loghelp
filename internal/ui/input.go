@@ -19,6 +19,7 @@ type boundedInput struct {
 	*widget.TextInput
 	buffer                 *ebiten.Image
 	legacyDiagnostic       bool
+	displayScale           float64
 	editText               string
 	undo, redo             []inputEdit
 	editAt                 time.Time

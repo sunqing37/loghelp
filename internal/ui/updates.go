@@ -10,8 +10,8 @@ import (
 
 func (w *app) showUpdates() {
 	content, check := w.updateSection()
-	content.GetWidget().MinWidth = 600
-	content.GetWidget().MinHeight = 340
+	content.GetWidget().MinWidth = w.px(600)
+	content.GetWidget().MinHeight = w.px(340)
 	w.showNestedDialog("版本更新", content)
 	check()
 }
@@ -19,14 +19,14 @@ func (w *app) showUpdates() {
 func (w *app) updateSection() (*widget.Container, func()) {
 	var content *widget.Container
 	status := w.label("手动检查 GitHub 上的最新正式版本")
-	status.MaxWidth = 580
-	status.GetWidget().MinHeight = 42
+	status.MaxWidth = float64(w.px(580))
+	status.GetWidget().MinHeight = w.px(42)
 	status.SetPosition(&widget.TextPositioning{HTextPosition: widget.TextPositionStart, VTextPosition: widget.TextPositionStart})
 	notes := w.label("检查完成后将在这里显示发布说明。")
-	notes.MaxWidth = 560
+	notes.MaxWidth = float64(w.px(560))
 	notes.SetPosition(&widget.TextPositioning{HTextPosition: widget.TextPositionStart, VTextPosition: widget.TextPositionStart})
-	notesContent := column(notes)
-	notesScroll := w.scrollBox(notesContent, 170)
+	notesContent := w.column(notes)
+	notesScroll := w.scrollBox(notesContent, w.px(170))
 	relayout := func(owner *widget.Window) {
 		notesContent.RequestRelayout()
 		if content != nil {
@@ -52,8 +52,8 @@ func (w *app) updateSection() (*widget.Container, func()) {
 	releaseButton := w.action("发布说明", "quiet", func() { openLink(latest.ReleaseURL) })
 	updateButton := w.action("下载更新并重启", "primary", func() {
 		message := w.label("更新将下载并校验新版，然后结束采集、录制和终端并重启应用。未保存的设置不会保留。是否继续？")
-		message.MaxWidth = 580
-		w.showNestedDialog("更新至 "+latest.Label(), column(message, row(w.action("确认更新", "primary", func() {
+		message.MaxWidth = float64(w.px(580))
+		w.showNestedDialog("更新至 "+latest.Label(), w.column(message, w.row(w.action("确认更新", "primary", func() {
 			w.modalReturn = nil
 			w.closeModal()
 			w.installUpdate(latest)
@@ -109,8 +109,8 @@ func (w *app) updateSection() (*widget.Container, func()) {
 		}()
 	}
 	checkButton = w.action("重新检查", "quiet", check)
-	content = widget.NewContainer(widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(1), widget.GridLayoutOpts.Stretch([]bool{true}, []bool{false, false, true, false}), widget.GridLayoutOpts.Spacing(0, 12))))
-	content.AddChild(stretchRow(w.label("LogHelp "+appVersionLabel), checkButton), status, notesScroll, row(releaseButton, updateButton, downloadButton))
+	content = widget.NewContainer(widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(1), widget.GridLayoutOpts.Stretch([]bool{true}, []bool{false, false, true, false}), widget.GridLayoutOpts.Spacing(0, w.px(12)))))
+	content.AddChild(w.stretchRow(w.label("LogHelp "+appVersionLabel), checkButton), status, notesScroll, w.row(releaseButton, updateButton, downloadButton))
 	return content, check
 }
 
@@ -122,8 +122,8 @@ func (w *app) installUpdate(release core.ReleaseUpdate) {
 	w.updateInProgress = true
 	ctx, cancel := context.WithCancel(w.ctx)
 	status := w.label("正在下载并校验新版，完成后将自动替换程序并重启。")
-	status.MaxWidth = 580
-	w.show("正在更新", column(status, w.button("取消更新", func() { cancel(); w.closeModal() })))
+	status.MaxWidth = float64(w.px(580))
+	w.show("正在更新", w.column(status, w.button("取消更新", func() { cancel(); w.closeModal() })))
 	owner := w.modalWindow
 	go func() {
 		prepared, err := core.PrepareUpdate(ctx, release)

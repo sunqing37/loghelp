@@ -24,7 +24,7 @@ func minColumnWidth(key string) int {
 
 func (w *app) columnWidth(key string, fallback int) int {
 	if width := w.config.ColumnWidths[key]; width > 0 {
-		return max(minColumnWidth(key), min(width, 4096))
+		return w.px(max(minColumnWidth(key), min(width, 4096)))
 	}
 	return fallback
 }
@@ -38,7 +38,7 @@ func (w *app) columnAtDivider(x, y int) logColumn {
 	position := w.panelRect().Min.X - w.tableX
 	for _, col := range w.logColumns(w.panelRect().Dx()) {
 		position += col.width
-		if position > header.Min.X && position <= header.Max.X && x >= position-5 && x <= position+5 {
+		if position > header.Min.X && position <= header.Max.X && x >= position-w.px(5) && x <= position+w.px(5) {
 			return col
 		}
 	}
@@ -57,7 +57,7 @@ func (w *app) resizeColumns(x, y int) bool {
 	if w.columnDrag.key != "" {
 		drag := &w.columnDrag
 		w.cursorShape = ebiten.CursorShapeEWResize
-		width := max(minColumnWidth(drag.key), min(drag.width+x-drag.anchorX, 4096))
+		width := max(minColumnWidth(drag.key), min(w.logical(drag.width+x-drag.anchorX), 4096))
 		if x != drag.anchorX || drag.changed {
 			if w.config.ColumnWidths == nil {
 				w.config.ColumnWidths = map[string]int{}
@@ -83,7 +83,7 @@ func (w *app) resizeColumns(x, y int) bool {
 		_, wheel := ebiten.Wheel()
 		if wheel != 0 {
 			width := w.panelRect().Dx()
-			w.tableX = max(0, min(w.tableX-int(wheel*55), max(w.tableWidth(width)-width, 0)))
+			w.tableX = max(0, min(w.tableX-int(wheel*float64(w.px(55))), max(w.tableWidth(width)-width, 0)))
 			return true
 		}
 	}

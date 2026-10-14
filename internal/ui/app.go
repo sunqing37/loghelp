@@ -107,6 +107,7 @@ type app struct {
 	detailDragging, detailDragChanged                             bool
 	detailAnchorY, detailAnchorHeight, detailMaxHeight            int
 	width, height                                                 int
+	displayScale                                                  float64
 	modal                                                         bool
 	removeModal                                                   widget.RemoveWindowFunc
 	modalWindow                                                   *widget.Window
@@ -123,7 +124,8 @@ type app struct {
 func Run() error {
 	config, configErr := core.LoadConfig()
 	ctx, cancel := context.WithCancel(context.Background())
-	w := &app{config: config, ctx: ctx, cancel: cancel, tasks: make(chan func(), 128), width: 1440, height: 900, configWritable: configErr == nil}
+	w := &app{config: config, ctx: ctx, cancel: cancel, tasks: make(chan func(), 128), displayScale: monitorScale(), configWritable: configErr == nil}
+	w.width, w.height = w.px(1440), w.px(900)
 	w.backgroundDiagnostic = os.Getenv("LOGHELP_PROFILE_DIR") != "" && os.Getenv("LOGHELP_PROFILE_BACKGROUND") == "1"
 	w.loadFace()
 	w.client, _ = core.DiscoverADB(config.ADB)
@@ -166,7 +168,7 @@ func Run() error {
 	}
 	go w.monitor()
 	defer w.shutdown()
-	ebiten.SetWindowSize(w.width, w.height)
+	ebiten.SetWindowSize(1440, 900)
 	ebiten.SetWindowTitle(fmt.Sprintf("LogHelp %s r%d — Android 日志工作台", appVersion, appRevision))
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	ebiten.SetWindowSizeLimits(1000, 720, -1, -1)
@@ -197,15 +199,15 @@ func (w *app) loadFace() {
 		w.fontSource = loadFontSource([]string{os.Getenv("LOGHELP_FONT"), `C:\Windows\Fonts\msyh.ttc`, `C:\Windows\Fonts\simhei.ttf`, "/System/Library/Fonts/PingFang.ttc", "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"}, goregular.TTF)
 		w.monoSource = loadFontSource([]string{`C:\Windows\Fonts\consola.ttf`, "/System/Library/Fonts/SFNSMono.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"}, gomono.TTF)
 	}
-	w.uiFace = &text.GoTextFace{Source: w.fontSource, Size: 14}
-	w.smallFace = &text.GoTextFace{Source: w.fontSource, Size: 12}
-	w.titleFace = &text.GoTextFace{Source: w.fontSource, Size: 20}
+	w.uiFace = &text.GoTextFace{Source: w.fontSource, Size: 14 * w.displayScale}
+	w.smallFace = &text.GoTextFace{Source: w.fontSource, Size: 12 * w.displayScale}
+	w.titleFace = &text.GoTextFace{Source: w.fontSource, Size: 20 * w.displayScale}
 	if w.config.Theme == "light" {
 		ebiten.SetPreferredColorMode(ebiten.ColorModeLight)
 	} else {
 		ebiten.SetPreferredColorMode(ebiten.ColorModeDark)
 	}
-	w.face, _ = text.NewMultiFace(&text.GoTextFace{Source: w.monoSource, Size: float64(w.config.FontSize)}, &text.GoTextFace{Source: w.fontSource, Size: float64(w.config.FontSize)})
+	w.face, _ = text.NewMultiFace(&text.GoTextFace{Source: w.monoSource, Size: w.fontSize()}, &text.GoTextFace{Source: w.fontSource, Size: w.fontSize()})
 }
 
 func loadFontSource(paths []string, fallback []byte) *text.GoTextFaceSource {
@@ -553,10 +555,7 @@ func (w *app) saveProfileSnapshot() {
 	}
 }
 func (w *app) Layout(width, height int) (int, int) {
-	if w.width != max(width, 1000) {
-		w.tableX = 0
-	}
-	w.width, w.height = max(width, 1000), max(height, 720)
+	w.LayoutF(float64(width), float64(height))
 	return w.width, w.height
 }
 func (w *app) background() color.NRGBA { return w.colors().bg }
@@ -842,7 +841,7 @@ func (w *app) visibleRows() int {
 	}
 	return max(w.logPanel.GetWidget().Rect.Dy()/w.rowHeight(), 1)
 }
-func (w *app) rowHeight() int { return int(w.config.FontSize) + 18 }
+func (w *app) rowHeight() int { return w.px(int(w.config.FontSize) + 18) }
 func (w *app) panelRect() image.Rectangle {
 	if w.logPanel == nil {
 		return image.Rectangle{}

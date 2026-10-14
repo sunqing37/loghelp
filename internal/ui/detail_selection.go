@@ -30,7 +30,7 @@ func (w *app) prepareDetails(p *page) bool {
 	if w.detailPanel == nil || p == nil || p.selected < 0 || p.selected >= len(p.result.Rows) {
 		return false
 	}
-	w.detailLines(p, p.detailEntry(p.selected), max(w.detailPanel.GetWidget().Rect.Dx()-40, 1))
+	w.detailLines(p, p.detailEntry(p.selected), max(w.detailPanel.GetWidget().Rect.Dx()-w.px(40), 1))
 	return true
 }
 
@@ -75,17 +75,17 @@ func (w *app) detailKeys(p *page) bool {
 func (w *app) detailCaret(p *page, x, y int) int {
 	rect := w.detailPanel.GetWidget().Rect
 	cache := &p.detailCache
-	lineHeight := int(w.config.FontSize) + 8
-	visible := max((rect.Dy()-24)/lineHeight, 1)
-	row := max(0, min(p.detailScroll+max(0, min(y-rect.Min.Y-12, (visible-1)*lineHeight))/lineHeight, len(cache.lines)-1))
+	lineHeight := w.detailLineHeight()
+	visible := max((rect.Dy()-w.px(24))/lineHeight, 1)
+	row := max(0, min(p.detailScroll+max(0, min(y-rect.Min.Y-w.px(12), (visible-1)*lineHeight))/lineHeight, len(cache.lines)-1))
 	line := cache.lines[row]
-	target := float64(max(x-rect.Min.X-16+p.detailX, 0))
+	target := float64(max(x-rect.Min.X-w.px(16)+p.detailX, 0))
 	if target == 0 || len(line) == 0 {
 		return cache.offsets[row]
 	}
 	// Limit probing to the portion near the pointer even when wrapping is off
 	// and the original log contains a very long physical line.
-	limit := max(int(target/float64(w.config.FontSize)*2)+16, 1)
+	limit := max(int(target/w.fontSize()*2)+16, 1)
 	ends := make([]int, 1, min(len(line), limit)+1)
 	for offset := 0; offset < len(line) && len(ends) <= limit; {
 		_, size := utf8.DecodeRuneInString(line[offset:])
@@ -140,11 +140,11 @@ func (w *app) selectDetails(p *page, x, y int) bool {
 	}
 	w.cursorShape = ebiten.CursorShapeText
 	if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) && time.Since(selection.scrollAt) >= 70*time.Millisecond {
-		lineHeight := int(w.config.FontSize) + 8
-		visible := max((rect.Dy()-24)/lineHeight, 1)
-		if y < rect.Min.Y+12 {
+		lineHeight := w.detailLineHeight()
+		visible := max((rect.Dy()-w.px(24))/lineHeight, 1)
+		if y < rect.Min.Y+w.px(12) {
 			p.detailScroll = max(0, p.detailScroll-1)
-		} else if y >= rect.Max.Y-12 {
+		} else if y >= rect.Max.Y-w.px(12) {
 			p.detailScroll = min(p.detailScroll+1, max(len(p.detailCache.lines)-visible, 0))
 		}
 		selection.scrollAt = time.Now()
@@ -188,6 +188,6 @@ func (w *app) drawDetailSelection(screen *ebiten.Image, p *page, row int, x, y f
 			fg = c.bg
 		}
 	}
-	vector.FillRect(screen, float32(x+prefix), float32(y-2), float32(width), float32(int(w.config.FontSize)+8), bg, false)
+	vector.FillRect(screen, float32(x+prefix), float32(y-float64(w.px(2))), float32(width), float32(w.detailLineHeight()), bg, false)
 	w.paint(screen, line[left:right], x+prefix, y, fg)
 }

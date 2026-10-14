@@ -54,19 +54,23 @@ func (w *app) LayoutF(width, height float64) (float64, float64) {
 	w.width, w.height = int(math.Ceil(width)), int(math.Ceil(height))
 	if changeScale {
 		w.rebuild()
-		for i, input := range w.workspaceInputs() {
-			previous := inputs[i]
-			if input == nil || previous == nil {
-				continue
-			}
-			input.TextInput.SetText(previous.GetText())
-			input.editText, input.undo, input.redo = previous.editText, previous.undo, previous.redo
-			input.editAt, input.editKind, input.editCursor = previous.editAt, previous.editKind, previous.editCursor
-			input.cursor, input.anchor, input.caretAt = previous.cursor, previous.anchor, previous.caretAt
-			input.scrollX = previous.scrollX * scale / previous.displayScale
-		}
+		w.restoreWorkspaceInputs(inputs)
 	}
 	return width, height
+}
+
+func (w *app) restoreWorkspaceInputs(inputs []*boundedInput) {
+	for i, input := range w.workspaceInputs() {
+		previous := inputs[i]
+		if input == nil || previous == nil {
+			continue
+		}
+		input.TextInput.SetText(previous.GetText())
+		input.editText, input.undo, input.redo = previous.editText, previous.undo, previous.redo
+		input.editAt, input.editKind, input.editCursor = previous.editAt, previous.editKind, previous.editCursor
+		input.cursor, input.anchor, input.caretAt = previous.cursor, previous.anchor, previous.caretAt
+		input.scrollX = previous.scrollX * w.displayScale / previous.displayScale
+	}
 }
 
 func (w *app) workspaceInputs() []*boundedInput {

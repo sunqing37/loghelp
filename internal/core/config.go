@@ -47,7 +47,7 @@ type Config struct {
 }
 
 func DefaultConfig() Config {
-	return Config{Version: 1, Theme: "dark", FontSize: 14, Wrap: true, DetailHeight: 180, Columns: []string{"time", "pid", "tid", "tag", "package"}, Favorites: map[string]string{}, SaveShellHistory: false, CacheCount: 200000, CacheBytes: 64 << 20, SegmentBytes: 100 << 20, QuotaBytes: 2 << 30, Shortcuts: map[string]string{}}
+	return Config{Version: 1, Theme: "system", FontSize: 14, Wrap: true, DetailHeight: 180, Columns: []string{"time", "pid", "tid", "tag", "package"}, Favorites: map[string]string{}, SaveShellHistory: false, CacheCount: 200000, CacheBytes: 64 << 20, SegmentBytes: 100 << 20, QuotaBytes: 2 << 30, Shortcuts: map[string]string{}}
 }
 func ConfigPath() (string, error) {
 	dir, err := os.UserConfigDir()
@@ -100,6 +100,9 @@ func LoadConfig() (Config, error) {
 	}
 	if c.FontSize < 9 {
 		c.FontSize = 14
+	}
+	if c.Theme != "dark" && c.Theme != "light" && c.Theme != "system" {
+		c.Theme = "system"
 	}
 	return c, nil
 }

@@ -546,15 +546,23 @@ func (w *app) settingsFor(initial core.Config) {
 	box.AddChild(proxySettings, w.heading("外观与阅读"))
 	theme := w.input(initial.Theme, "", nil, nil)
 	inputs["theme"] = theme
-	var dark, light *widget.Button
-	dark = w.action("深色", "", func() { theme.SetText("dark"); dark.SetText("● 深色"); light.SetText("浅色") })
-	light = w.action("浅色", "", func() { theme.SetText("light"); light.SetText("● 浅色"); dark.SetText("深色") })
-	if initial.Theme == "light" {
-		light.SetText("● 浅色")
-	} else {
-		dark.SetText("● 深色")
+	themeButtons := w.row()
+	choices := map[string]*widget.Button{}
+	refreshTheme := func() {
+		for key, title := range map[string]string{"system": "跟随系统", "dark": "深色", "light": "浅色"} {
+			if theme.GetText() == key {
+				choices[key].SetText("● " + title)
+			} else {
+				choices[key].SetText(title)
+			}
+		}
 	}
-	box.AddChild(w.stretchRow(w.label("界面主题"), w.row(dark, light)))
+	for _, option := range []struct{ key, title string }{{"system", "跟随系统"}, {"dark", "深色"}, {"light", "浅色"}} {
+		choices[option.key] = w.action(option.title, "", func() { theme.SetText(option.key); refreshTheme() })
+		themeButtons.AddChild(choices[option.key])
+	}
+	refreshTheme()
+	box.AddChild(w.stretchRow(w.label("界面主题"), themeButtons))
 	add("font", "字体大小", fmt.Sprint(initial.FontSize))
 	columns := w.input(strings.Join(initial.Columns, ","), "", nil, nil)
 	inputs["columns"] = columns
@@ -662,8 +670,8 @@ func (w *app) settingsFor(initial core.Config) {
 			}
 			bools[key] = v
 		}
-		if get("theme") != "dark" && get("theme") != "light" {
-			w.message("设置错误", "主题使用 dark/light")
+		if get("theme") != "dark" && get("theme") != "light" && get("theme") != "system" {
+			w.message("设置错误", "请选择跟随系统、深色或浅色主题")
 			return
 		}
 		candidate.ADB = get("adb")

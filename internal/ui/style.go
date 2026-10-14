@@ -15,7 +15,7 @@ type palette struct{ bg, surface, elevated, sidebar, text, muted, line, accent, 
 
 func rgb(r, g, b uint8) color.NRGBA { return color.NRGBA{r, g, b, 255} }
 func (w *app) colors() palette {
-	if w.config.Theme == "light" {
+	if w.lightTheme() {
 		return palette{rgb(238, 242, 247), rgb(255, 255, 255), rgb(246, 248, 252), rgb(248, 250, 253), rgb(35, 48, 68), rgb(110, 125, 147), rgb(222, 229, 239), rgb(48, 105, 225), rgb(232, 240, 255), rgb(225, 235, 253), rgb(30, 146, 107), rgb(207, 67, 81)}
 	}
 	return palette{rgb(15, 20, 29), rgb(23, 30, 42), rgb(30, 39, 54), rgb(19, 26, 37), rgb(227, 233, 244), rgb(137, 152, 176), rgb(43, 55, 74), rgb(115, 157, 255), rgb(33, 49, 80), rgb(31, 48, 75), rgb(90, 203, 159), rgb(247, 113, 128)}

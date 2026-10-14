@@ -69,6 +69,7 @@ type app struct {
 	profileSelectionApplied                                       bool
 	ui                                                            *ebitenui.UI
 	config                                                        core.Config
+	systemColorMode, detectedSystemColorMode                      ebiten.ColorMode
 	client                                                        *core.ADB
 	adb                                                           atomic.Pointer[core.ADB]
 	hub                                                           *core.Hub
@@ -134,6 +135,8 @@ func Run() error {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	w := &app{config: config, ctx: ctx, cancel: cancel, tasks: make(chan func(), 128), displayScale: monitorScale(), configWritable: configErr == nil}
+	w.systemColorMode = ebiten.SystemColorMode()
+	w.detectedSystemColorMode = w.systemColorMode
 	if deviceDiagnostic {
 		w.configWritable = false
 	}
@@ -182,6 +185,7 @@ func Run() error {
 		})
 	}
 	go w.monitor()
+	go w.monitorSystemTheme(w.systemColorMode)
 	defer w.shutdown()
 	ebiten.SetWindowSize(1440, 900)
 	ebiten.SetWindowTitle(fmt.Sprintf("LogHelp %s r%d — Android 日志工作台", appVersion, appRevision))
@@ -217,7 +221,9 @@ func (w *app) loadFace() {
 	w.uiFace = &text.GoTextFace{Source: w.fontSource, Size: 14 * w.displayScale}
 	w.smallFace = &text.GoTextFace{Source: w.fontSource, Size: 12 * w.displayScale}
 	w.titleFace = &text.GoTextFace{Source: w.fontSource, Size: 20 * w.displayScale}
-	if w.config.Theme == "light" {
+	if w.config.Theme == "system" {
+		ebiten.SetPreferredColorMode(ebiten.ColorModeUnknown)
+	} else if w.lightTheme() {
 		ebiten.SetPreferredColorMode(ebiten.ColorModeLight)
 	} else {
 		ebiten.SetPreferredColorMode(ebiten.ColorModeDark)
@@ -465,6 +471,7 @@ func (w *app) Update() error {
 		}
 	}
 ready:
+	w.applySystemTheme()
 	allowInput := ebiten.IsFocused() && !w.backgroundDiagnostic && !w.fileDialogOpen
 	if w.columnDrag.key != "" && (!allowInput || w.modal) {
 		w.finishColumnResize()

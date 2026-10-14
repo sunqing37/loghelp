@@ -278,7 +278,7 @@ func (w *app) drawPanels(screen *ebiten.Image) {
 					w.highlight(canvas, value, messageX, y, p.search, fg)
 				} else if col.key == "level" {
 					fg = entryColor(e)
-					if w.config.Theme == "light" {
+					if w.lightTheme() {
 						switch core.LevelValue(e.Level) {
 						case 1, 2:
 							fg = rgb(40, 103, 192)

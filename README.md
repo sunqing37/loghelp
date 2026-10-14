@@ -16,6 +16,8 @@
 
 设置页的“更新网络”可选择环境变量、直连或自定义代理。自定义地址支持 `http://`、`https://`、`socks5://`、`socks5h://`，例如 `http://127.0.0.1:7890`（端口以代理软件实际配置为准）；检查更新会立即使用当前输入，点击“保存设置”后长期生效，下载更新包也使用同一代理。环境变量模式读取 `HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY`，不主动读取操作系统的系统代理设置。临时连接、读取失败或服务器暂时故障最多尝试 3 次，每次超时 15 秒，两次重试分别等待 1 秒、2 秒；限流、代理认证和证书错误不自动重试，并显示具体中文原因及可获取的限流恢复时间。检查失败时仍可点击“打开发布页手动下载”，关闭更新弹窗后保留设置草稿；关闭或切换弹窗会取消正在进行的检查。
 
+界面主题可选择“跟随系统”“深色”“浅色”，新配置默认跟随系统，已有明确的深色/浅色选择保持不变。跟随系统通过 Ebitengine 读取 Windows 应用主题、macOS 外观、Linux GSettings/GTK 偏好，系统主题变化后自动更新主界面、日志颜色和详情选区；有弹窗或正在编辑/拖动时延后应用并保留输入。无法识别系统偏好时使用浅色。
+
 Windows EXE 已嵌入与窗口一致的蓝色 `L` 图标。图标源文件为 `assets/loghelp.ico`，多尺寸 PNG/ICO 由 `python scripts/generate-icon.py` 根据现有绘图规则生成；`cmd/loghelp/rsrc_windows_amd64.syso` 和 `rsrc_windows_arm64.syso` 是可直接参与构建的资源文件。
 
 协作规则见 [AGENTS.md](AGENTS.md) 和 [.agent 目录](.agent/README.md)，其中包含 [提交规范](.agent/rules/commit-message.md) 及 [GitHub 发布流程](.agent/workflows/github-release.md)。发布包由 `python -X utf8 .agent/scripts/package-release.py --all` 基于六种完整桌面构建记录生成，不重复编译；不带 `--all` 默认打包 Windows amd64。

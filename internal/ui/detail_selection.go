@@ -184,7 +184,7 @@ func (w *app) drawDetailSelection(screen *ebiten.Image, p *page, row int, x, y f
 	if p.detailSelection.focused {
 		bg = c.accent
 		fg = rgb(255, 255, 255)
-		if w.config.Theme != "light" {
+		if !w.lightTheme() {
 			fg = c.bg
 		}
 	}

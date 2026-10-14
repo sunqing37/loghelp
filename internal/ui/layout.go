@@ -457,13 +457,20 @@ func (w *app) showDialog(title string, content *widget.Container, primary *widge
 	if ch > bodyHeight {
 		hint = "滚轮浏览更多 · Esc 关闭"
 	}
-	container.AddChild(stretchRow(w.heading(title), w.action("×", "quiet", w.closeModal)), w.scrollBox(content, bodyHeight), stretchRow(w.muted(hint), footer))
+	var body widget.PreferredSizeLocateableWidget = w.scrollBox(content, bodyHeight)
+	if title == "版本更新" {
+		// Only release notes scroll; version, status and actions stay in place.
+		body = content
+	}
+	container.AddChild(stretchRow(w.heading(title), w.action("×", "quiet", w.closeModal)), body, stretchRow(w.muted(hint), footer))
 	left, top := (w.width-width)/2, (w.height-height)/2
 	window := widget.NewWindow(widget.WindowOpts.Contents(container), widget.WindowOpts.Modal(), widget.WindowOpts.BlockLower(true), widget.WindowOpts.Location(image.Rect(left, top, left+width, top+height)))
 	w.modalWindow = window
 	w.removeModal = w.ui.AddWindow(window)
 }
 func (w *app) closeModal() {
+	back := w.modalReturn
+	w.modalReturn = nil
 	w.profileScene = ""
 	if w.removeModal != nil {
 		w.removeModal()
@@ -472,6 +479,23 @@ func (w *app) closeModal() {
 	w.modal = false
 	w.modalWindow = nil
 	w.ui.ClearFocus()
+	if back != nil {
+		back()
+	}
+}
+
+func (w *app) showNestedDialog(title string, content *widget.Container) {
+	parent, parentScene, parentReturn := w.modalWindow, w.profileScene, w.modalReturn
+	w.show(title, content)
+	if parent != nil {
+		w.modalReturn = func() {
+			w.modal, w.modalWindow, w.profileScene = true, parent, parentScene
+			w.modalReturn = parentReturn
+			w.removeModal = w.ui.AddWindow(parent)
+			w.ui.Container.RequestRelayout()
+			w.renderDirty = true
+		}
+	}
 }
 func (w *app) message(title, message string) {
 	label := w.label(message)

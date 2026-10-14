@@ -89,6 +89,8 @@ type app struct {
 	serialInput, appInput, buffersInput, filterInput, searchInput *boundedInput
 	commandInput                                                  *boundedInput
 	fileDialogOpen                                                bool
+	updateInProgress                                              bool
+	updateRequests                                                int
 	fileDirectory                                                 string
 	cursorShape                                                   ebiten.CursorShapeType
 	statusLabel                                                   *widget.Text
@@ -100,6 +102,7 @@ type app struct {
 	modal                                                         bool
 	removeModal                                                   widget.RemoveWindowFunc
 	modalWindow                                                   *widget.Window
+	modalReturn                                                   func()
 	terminalFocus                                                 bool
 	configWritable                                                bool
 	canvas                                                        *ebiten.Image
@@ -139,6 +142,13 @@ func Run() error {
 	}
 	if w.client == nil {
 		w.post(w.settings)
+	}
+	if updateError := core.PendingUpdateError(); updateError != "" {
+		w.post(func() { w.message("上次更新未完成", updateError) })
+	}
+	if os.Getenv("LOGHELP_PROFILE_DIR") != "" && os.Getenv("LOGHELP_PROFILE_SCENE") == "updates" {
+		w.post(w.settings)
+		w.post(w.showUpdates)
 	}
 	go w.monitor()
 	defer w.shutdown()
@@ -485,6 +495,9 @@ func (w *app) Draw(screen *ebiten.Image) {
 }
 
 func (w *app) profileSnapshotReady() bool {
+	if os.Getenv("LOGHELP_PROFILE_SCENE") == "updates" && (w.profileScene != "版本更新" || w.updateRequests > 0) {
+		return false
+	}
 	p := w.active()
 	if w.backgroundDiagnostic && os.Getenv("LOGHELP_PROFILE_SELECTION") != "" && !w.profileSelectionApplied {
 		return false

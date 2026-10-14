@@ -153,6 +153,7 @@ def fingerprint(desktop):
     files.append(ROOT / "VERSION")
     if desktop:
         files.extend((ROOT / "cmd").rglob("*.go"))
+        files.extend((ROOT / "cmd").rglob("*.syso"))
     files.extend([ROOT / "go.mod", ROOT / "go.sum"])
     # Match build.ps1 stamps on Windows to avoid recompiling an unchanged app.
     return "\n".join(

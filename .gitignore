@@ -4,6 +4,8 @@
 /dist/
 *.exe
 *.exe~
+*.exe.previous
+.loghelp-update-*/
 *.test
 *.out
 

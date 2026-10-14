@@ -60,6 +60,7 @@ try {
     $files += @(Get-ChildItem -LiteralPath $projectRoot -Filter '*.go')
     $files += @(Get-Item -LiteralPath (Join-Path $projectRoot 'VERSION'))
     if ($Desktop) { $files += @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'cmd') -Filter '*.go' -Recurse) }
+    if ($Desktop) { $files += @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'cmd') -Filter '*.syso' -Recurse) }
     $files += @(Get-Item -LiteralPath (Join-Path $projectRoot 'go.mod'),(Join-Path $projectRoot 'go.sum'))
     $fingerprint = (($files | Sort-Object FullName | ForEach-Object { $_.FullName + ':' + (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash }) -join "`n")
     $mode = if ($Desktop) { 'desktop' } else { 'modules' }

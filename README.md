@@ -4,11 +4,15 @@
 
 ## 下载
 
-当前版本 **0.0.1**（版本号记录在 `VERSION`）。在 [GitHub Releases](https://github.com/sunqing37/loghelp/releases/tag/v0.0.1) 下载 Windows 64 位便携包，解压后运行 `loghelp.exe`。ADB 需另行准备，可在设置中选择其位置。发布附件提供 SHA-256 校验文件。
+当前版本 **0.0.1**（版本号记录在 `VERSION`）。在 [GitHub Releases](https://github.com/sunqing37/loghelp/releases/tag/v0.0.1) 下载 Windows 64 位便携包，优先选择 `loghelp-0.0.1-windows-amd64-r2.zip` 修订包，解压后运行 `loghelp.exe`。ADB 需另行准备，可在设置中选择其位置。发布附件提供 SHA-256 校验文件。
 
 见 [0.0.1 发布说明](docs/releases/0.0.1.md) 和 [更新记录](CHANGELOG.md)。
 
 源码构建时会将 `VERSION` 嵌入程序，版本号显示在窗口标题、主界面顶部和设置页。修改版本文件后，构建脚本会识别变更并重新编译。
+
+设置页提供“检查更新”，打开独立弹窗，在后台检查 GitHub 最新正式 Release，显示版本和发布说明摘要；关闭后返回原设置页，保留未保存内容和滚动位置。Windows 便携版发现新版后可点击“下载更新并重启”：确认后下载并校验 SHA-256，结束采集、录制和终端，由独立更新进程替换 EXE 并重启，替换或启动失败时恢复旧程序。需要程序目录可写，旧 EXE 保留为备份；其他平台或缺少可校验附件时可手动下载。检查仅在点击按钮时进行，超时或网络错误会显示提示，重启前需先保存设置。
+
+Windows EXE 已嵌入与窗口一致的蓝色 `L` 图标。图标源文件为 `assets/loghelp.ico`，多尺寸 PNG/ICO 由 `python scripts/generate-icon.py` 根据现有绘图规则生成；`cmd/loghelp/rsrc_windows_amd64.syso` 和 `rsrc_windows_arm64.syso` 是可直接参与构建的资源文件。
 
 ## 当前功能
 

@@ -29,6 +29,7 @@ type Config struct {
 	Wrap             bool              `json:"wrap"`
 	DetailHeight     int               `json:"detail_height"`
 	Columns          []string          `json:"columns"`
+	ColumnWidths     map[string]int    `json:"column_widths,omitempty"`
 	History          []string          `json:"history,omitempty"`
 	Favorites        map[string]string `json:"favorites,omitempty"`
 	ShellHistory     []string          `json:"shell_history,omitempty"`

@@ -580,6 +580,13 @@ func (w *app) settingsFor(initial core.Config) {
 		columnButtons.AddChild(button)
 	}
 	box.AddChild(w.label("可见日志列"), columnButtons)
+	resetColumnWidths := false
+	var resetWidthsButton *widget.Button
+	resetWidthsButton = w.button("恢复默认列宽", func() {
+		resetColumnWidths = true
+		resetWidthsButton.SetText("默认列宽（保存后生效）")
+	})
+	box.AddChild(resetWidthsButton)
 	addBool("wrap", "详情自动换行", initial.Wrap)
 	box.AddChild(w.heading("录制与存储"))
 	add("segment", "片段 MiB", fmt.Sprint(initial.SegmentBytes>>20))
@@ -609,6 +616,9 @@ func (w *app) settingsFor(initial core.Config) {
 	box.AddChild(w.button("清除 Shell 历史", func() { w.config.ShellHistory = nil; w.save() }))
 	saveButton := w.action("保存设置", "primary", func() {
 		candidate := w.config
+		if resetColumnWidths {
+			candidate.ColumnWidths = nil
+		}
 		get := func(key string) string { return strings.TrimSpace(inputs[key].GetText()) }
 		integer := func(key string, min, max int64) (int64, error) {
 			v, err := strconv.ParseInt(get(key), 10, 64)
@@ -725,6 +735,8 @@ Ctrl/Cmd+F/L 搜索/过滤，F3/Shift+F3 匹配导航。
 选中日志后 ↑/↓ 移动到相邻行，长按连续移动；自动滚动并更新详情。
 Ctrl/Cmd+T/W 新建/关闭，Ctrl+Tab/Shift+Ctrl+Tab 切换。
 按住标签名称左右拖动调整顺序，松开保存；Esc 或移出标签栏松开取消。
+拖动表头各列右侧分隔线调节宽度，松开保存；设置中可恢复默认列宽。
+日志列表及表头 Shift+滚轮横向浏览，较宽的列可横向滚动查看。
 Ctrl/Cmd+Shift+P 暂停，Ctrl/Cmd+End 到末尾。
 终端 Ctrl+C 中断；Ctrl+Shift+C/V 复制/粘贴。
 终端固定设备，断线不重放命令；历史默认关闭。

@@ -93,6 +93,7 @@ type app struct {
 	startActive, followActive, recordActive                       bool
 	rowHeader                                                     *widget.Container
 	tableX                                                        int
+	columnDrag                                                    columnResizeState
 	serialInput, appInput, buffersInput, filterInput, searchInput *boundedInput
 	commandInput                                                  *boundedInput
 	fileDialogOpen                                                bool
@@ -436,6 +437,9 @@ func (w *app) Update() error {
 	}
 ready:
 	allowInput := ebiten.IsFocused() && !w.backgroundDiagnostic && !w.fileDialogOpen
+	if w.columnDrag.key != "" && (!allowInput || w.modal) {
+		w.finishColumnResize()
+	}
 	if w.detailDragging && (!allowInput || w.modal) {
 		w.finishDetailResize()
 	}

@@ -105,18 +105,20 @@ type logColumn struct {
 
 func (w *app) logColumns(width int) []logColumn {
 	scale := float64(w.config.FontSize) / 14
-	cols := []logColumn{{"level", "级别", 42}}
-	used := 42
+	levelWidth := w.columnWidth("level", 42)
+	cols := []logColumn{{"level", "级别", levelWidth}}
+	used := levelWidth
 	names := map[string]string{"time": "时间", "pid": "PID", "tid": "TID", "tag": "TAG", "package": "应用", "process": "进程"}
 	widths := map[string]int{"time": 190, "pid": 84, "tid": 84, "tag": 174, "package": 224, "process": 220}
 	for _, key := range w.config.Columns {
 		if n := widths[key]; n > 0 {
 			n = int(float64(n) * scale)
+			n = w.columnWidth(key, n)
 			cols = append(cols, logColumn{key, names[key], n})
 			used += n
 		}
 	}
-	cols = append(cols, logColumn{"message", "消息", max(width-used-12, 320)})
+	cols = append(cols, logColumn{"message", "消息", w.columnWidth("message", max(width-used-12, 320))})
 	return cols
 }
 func (w *app) tableWidth(width int) int {
@@ -206,7 +208,9 @@ func (w *app) drawPanels(screen *ebiten.Image) {
 	}
 	w.drawDetailDivider(screen)
 	cols := w.logColumns(rect.Dx())
-	w.tableX = max(0, min(w.tableX, w.tableWidth(rect.Dx())-rect.Dx()))
+	if w.columnDrag.key == "" {
+		w.tableX = max(0, min(w.tableX, w.tableWidth(rect.Dx())-rect.Dx()))
+	}
 	if w.rowHeader != nil {
 		header := w.rowHeader.GetWidget().Rect.Intersect(screen.Bounds())
 		if !header.Empty() {
@@ -215,12 +219,19 @@ func (w *app) drawPanels(screen *ebiten.Image) {
 			_, headerTextHeight := text.Measure(" ", w.smallFace, 0)
 			headerTextY := float64(header.Min.Y) + (float64(header.Dy())-headerTextHeight)/2
 			x := rect.Min.X - w.tableX
+			mx, my := ebiten.CursorPosition()
+			hover := w.columnAtDivider(mx, my)
 			for _, col := range cols {
 				r := image.Rect(x, header.Min.Y, x+col.width, header.Max.Y).Intersect(header)
 				if !r.Empty() {
 					w.paintFace(canvas.SubImage(r).(*ebiten.Image), col.title, float64(x+12), headerTextY, w.smallFace, c.muted)
 				}
 				x += col.width
+				lineColor := c.line
+				if !w.modal && (w.columnDrag.key == col.key || hover.key == col.key) {
+					lineColor = c.accent
+				}
+				vector.FillRect(canvas, float32(x-1), float32(header.Min.Y+5), 1, float32(max(header.Dy()-10, 1)), lineColor, false)
 			}
 			vector.FillRect(canvas, float32(header.Min.X), float32(header.Max.Y-1), float32(header.Dx()), 1, c.line, false)
 		}
@@ -408,6 +419,9 @@ func (w *app) mouse(p *page) {
 		return
 	}
 	x, y := ebiten.CursorPosition()
+	if p.shell == nil && w.resizeColumns(x, y) {
+		return
+	}
 	if w.resizeDetails(x, y) {
 		return
 	}

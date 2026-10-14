@@ -29,10 +29,20 @@ func (w *app) updatePanelCursor(p *page) {
 		w.cursorShape = ebiten.CursorShapeNSResize
 		return
 	}
+	if w.columnDrag.key != "" {
+		w.cursorShape = ebiten.CursorShapeEWResize
+		return
+	}
 	if w.modal || w.logPanel == nil {
 		return
 	}
 	x, y := ebiten.CursorPosition()
+	if p.shell == nil {
+		if col := w.columnAtDivider(x, y); col.key != "" {
+			w.cursorShape = ebiten.CursorShapeEWResize
+			return
+		}
+	}
 	if p.detailSelection.dragging || w.detailPanel != nil && p.selected >= 0 && p.selected < len(p.result.Rows) && cursorOver(w.detailPanel.GetWidget(), x, y) {
 		w.cursorShape = ebiten.CursorShapeText
 		return

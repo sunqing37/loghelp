@@ -79,6 +79,7 @@ func (w *app) inputRow(label string, entry *boundedInput, buttons ...widget.Pref
 }
 
 func (w *app) rebuild() {
+	w.finishColumnResize()
 	w.cursorShape = ebiten.CursorShapeDefault
 	w.tabWidgets = nil
 	w.tabDrag = tabDragState{}
@@ -201,7 +202,7 @@ func (w *app) rebuild() {
 				}
 			}))))
 		} else {
-			main.AddChild(w.muted("↑ / ↓ 移动选中日志  ·  Shift + 滚轮横向浏览  ·  F3 / Shift+F3 在匹配间跳转"))
+			main.AddChild(w.muted("拖动表头分隔线调列宽  ·  ↑ / ↓ 选择日志  ·  Shift + 滚轮横向浏览  ·  F3 查找"))
 		}
 	}
 	workspace.AddChild(w.inset(main, 14, c.bg))

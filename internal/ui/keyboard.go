@@ -164,7 +164,7 @@ func (w *app) keyboard() {
 	}
 }
 func (w *app) logKeys(p *page) bool {
-	if p.shell != nil || w.ui.HasFocus() || w.detailDragging || p.detailSelection.dragging || p.selected < 0 || p.selected >= len(p.result.Rows) {
+	if p.shell != nil || w.ui.HasFocus() || w.detailDragging || w.columnDrag.key != "" || p.detailSelection.dragging || p.selected < 0 || p.selected >= len(p.result.Rows) {
 		return false
 	}
 	if ebiten.IsKeyPressed(ebiten.KeyControl) || ebiten.IsKeyPressed(ebiten.KeyMeta) || ebiten.IsKeyPressed(ebiten.KeyAlt) || ebiten.IsKeyPressed(ebiten.KeyShift) {

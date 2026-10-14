@@ -345,3 +345,21 @@
 仍待手动验收：macOS/Linux 的原生库与 FFmpeg 程序启动、GPU 显示、图片粘贴及相关依赖缺失路径；所有平台的实际按钮点击、实时拖动/导航、横竖屏、触摸中关闭/重连、断线与恢复、暂停恢复、系统另存为覆盖/取消，以及持续动态画面的流畅度和端到端延迟。没有目标系统或未执行的场景不标为通过。项目未新增或运行自动化测试，未提交、推送或发布。
 
 跨平台、CGO=0、流畅投屏、图片剪贴板、依赖分发和验证边界已维护在 `.agent/skills/loghelp-desktop-features/SKILL.md`，同步安装到个人 `skills/loghelp-desktop-features/SKILL.md` 并接入根协作入口。技能验证使用本地隔离的 PyYAML，不增加 Go 项目依赖；文档/技能写入完成后只做静态检查，未再修改源码或重复编译。
+
+## 2026-10-14：0.0.2 多平台发布构建
+
+- `VERSION=0.0.2`、`REVISION=0`，六种完整桌面程序串行构建成功，CGO=0；构建时间为本机 23:09–23:10。
+- 逐一核对成功记录的源码指纹和 SHA-256，`go version -m` 中的 GOOS、GOARCH、CGO_ENABLED 与目标一致。
+- Windows amd64 `--version` 输出 `LogHelp 0.0.2 r0`；通过独立诊断配置连接同一设备运行 8 秒，退出码 0、stderr 为空，快照位于本地 `artifacts/release-0.0.2/workspace.png`。未改用户设置。
+- 已有设备视频和图片剪贴板验证证据见上节。此次版本更新没有改投屏源码，不重复此前图片格式验证。
+- macOS、Linux、Windows arm64 均为 Windows 主机交叉链接；没有对应系统运行、解码或图片粘贴证据。包说明明确依赖及未验收范围。
+- 发布脚本语法及帮助检查通过，PowerShell 入口统一委托 Python；未新增或运行测试。
+
+| 目标 | 二进制 | SHA-256 |
+|---|---|---|
+| windows/amd64 | `bin/loghelp.exe` | `08729a2e7e5531fa5fd8408ee2af302cccd4471f2127cc19fac2e2ed73abddd1` |
+| windows/arm64 | `bin/windows-arm64/loghelp.exe` | `2c22db63d5b388d5821a6811ec302aa1fd188048f9dd9d61931f7d706fa80857` |
+| darwin/amd64 | `bin/darwin-amd64/loghelp` | `fc707ef178845fa53440d7625ba30c5a64f0413a3562a3b973853a84280b82b8` |
+| darwin/arm64 | `bin/darwin-arm64/loghelp` | `7c72c9b13c4b1ecd2c89c122ade9ebc79c26171994a356c92c0d8cc7c9950861` |
+| linux/amd64 | `bin/linux-amd64/loghelp` | `c48ce7943b8aaca4b6f055c244048bb60d4bad88a835cddfa62dd56dc4481ee5` |
+| linux/arm64 | `bin/linux-arm64/loghelp` | `0a4e7ab945300fe91bcd269ed79493c99647baf37c256150efe6f706d7f1cd40` |

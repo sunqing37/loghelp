@@ -7,12 +7,12 @@
 | 窗口、布局与交互 | `internal/ui/` |
 | 采集、查询、录制、Shell、更新 | `internal/core/` |
 | 内存诊断 | `internal/diagnostics/`、`docs/memory-profiling.md` |
-| 产品版本 | 根 `VERSION`，当前 `0.0.1` |
+| 产品版本 | 根 `VERSION`，当前 `0.0.2` |
 | 发布修订 | 根 `REVISION`，非负整数，同版本发布新包必须递增 |
 | 版本嵌入 | 根 `version.go`，应用版本与修订均来自根文件 |
 | 构建 | `scripts/build.py` / `scripts/build.ps1` |
 | Windows 图标 | `assets/`、`scripts/generate-icon.py`、`cmd/loghelp/rsrc_windows_*.syso` |
-| 构建结果 | `bin/loghelp.exe`，构建指纹和哈希记录在 `artifacts/` |
+| 构建结果 | Windows amd64 为 `bin/loghelp.exe`，其他为 `bin/<os>-<arch>/loghelp[.exe]`；构建指纹和哈希记录在 `artifacts/` |
 | 发布包 | `dist/<版本>/`，通过 `.agent/scripts/package-release.py` 打包 |
 | 手动验收 | `docs/manual-validation.md` |
 | 发布说明 | `docs/releases/<版本>.md`、根 `CHANGELOG.md` |

@@ -173,8 +173,7 @@ def up_to_date(stamp, source_hash, desktop, output):
         if desktop:
             if not output.is_file():
                 return False
-            if previous.get("OutputHash"):
-                return previous["OutputHash"] == hashlib.sha256(output.read_bytes()).hexdigest()
+            return previous.get("OutputHash") == hashlib.sha256(output.read_bytes()).hexdigest()
         return True
     except (OSError, ValueError, AttributeError):
         return False
@@ -199,17 +198,26 @@ def compile_go(command, env):
             raise
 
 
+def output_path(target_os, arch):
+    if (target_os, arch) == ("windows", "amd64"):
+        return ROOT / "bin/loghelp.exe"
+    return ROOT / "bin" / f"{target_os}-{arch}" / ("loghelp.exe" if target_os == "windows" else "loghelp")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--desktop", action="store_true", help="Build the full desktop app after manual approval.")
     parser.add_argument("--run", action="store_true", help="Open the desktop app after --desktop.")
     parser.add_argument("--arch", choices=("amd64", "arm64"), default="amd64")
     parser.add_argument("--target-os", choices=("windows", "linux", "darwin"), help="Defaults to the Go host OS.")
+    parser.add_argument("--cross-desktop", action="store_true", help="Explicitly authorize cross-platform desktop linking; does not validate target runtime.")
     parser.add_argument("--wait-timeout", type=int, default=600, help="Seconds to wait for other builds (default: 600).")
     parser.add_argument("--dry-run", action="store_true", help="Inspect and print the plan without compiling or opening the app.")
     args = parser.parse_args()
     if args.run and not args.desktop:
         parser.error("--run requires --desktop")
+    if args.cross_desktop and not args.desktop:
+        parser.error("--cross-desktop requires --desktop")
     if args.wait_timeout < 0:
         parser.error("--wait-timeout must be nonnegative")
     go = shutil.which("go")
@@ -220,11 +228,14 @@ def main():
     env["GOARCH"] = args.arch
     host_os = capture([go, "env", "GOHOSTOS"], env)
     target_os = args.target_os or host_os
-    if args.desktop and target_os != host_os:
-        parser.error("Full desktop builds must run on their target platform; use module checks for other platforms.")
+    if args.desktop and target_os != host_os and not args.cross_desktop:
+        parser.error("Cross-platform desktop builds require explicit --cross-desktop; target runtime must be checked separately.")
+    host_arch = capture([go, "env", "GOHOSTARCH"], env)
+    if args.run and (target_os != host_os or args.arch != host_arch):
+        parser.error("--run requires the host OS and architecture")
     env["GOOS"] = target_os
     mode = "desktop" if args.desktop else "modules"
-    output = ROOT / "bin" / ("loghelp.exe" if target_os == "windows" else "loghelp")
+    output = output_path(target_os, args.arch)
     stamp = ROOT / "artifacts" / f"{mode}-{target_os}-{args.arch}.json"
     command = [go, "build"]
     if args.desktop:
@@ -262,6 +273,10 @@ def main():
             record = {"Fingerprint": source_hash, "Completed": datetime.now().astimezone().isoformat(), "Mode": mode}
             if args.desktop:
                 record["OutputHash"] = hashlib.sha256(output.read_bytes()).hexdigest()
+                record.update({"Output": output.relative_to(ROOT).as_posix(), "GOOS": target_os, "GOARCH": args.arch,
+                               "CGO_ENABLED": "0", "HostOS": host_os, "HostArch": host_arch,
+                               "Version": (ROOT / "VERSION").read_text(encoding="utf-8").strip(),
+                               "Revision": int((ROOT / "REVISION").read_text(encoding="utf-8").strip())})
             temporary = stamp.with_suffix(".tmp")
             temporary.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
             temporary.replace(stamp)

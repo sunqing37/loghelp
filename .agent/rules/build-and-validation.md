@@ -11,6 +11,9 @@ python -X utf8 scripts/build.py
 
 # 仅在获得完整桌面构建授权后
 python -X utf8 scripts/build.py --desktop
+
+# 已授权多平台产物时显式交叉链接，逐平台串行执行
+python -X utf8 scripts/build.py --desktop --cross-desktop --target-os linux --arch arm64
 ```
 
 - 构建脚本检测其他编译任务并串行等待；不要随意关闭其他会话或把空闲守护进程误当实际编译。等待期间保持进度沟通。
@@ -20,3 +23,5 @@ python -X utf8 scripts/build.py --desktop
 - 文档、协作规范及发布说明修改只做相应静态检查。Python 脚本可做语法和 `--help` 检查，不冒充业务运行验收。
 - 手动验收按变更范围执行：版本显示、独立弹窗、网络失败、旧版本 / 同版本修订判断、校验失败、替换重启与配置保留。涉及真实进程结束或 EXE 替换时选择明确的验收副本。
 - 在 `docs/manual-validation.md` 记录实际操作及结果，区分编译、启动、交互、替换和回滚。未执行的项注明未执行，不把静态检查称为完整验证。
+
+完整交叉链接只证明目标程序可编译，不证明在该系统能启动或交互。`--run` 仅允许主机系统及架构。Windows amd64 使用传统 `bin/loghelp.exe`，其他目标分目录保存；发布包保留 Unix 可执行权限。PowerShell 入口委托 Python，实现相同并发检查、指纹及产物哈希规则。

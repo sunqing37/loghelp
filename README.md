@@ -4,9 +4,9 @@
 
 ## 下载
 
-当前版本 **0.0.1 r3**（产品版本记录在 `VERSION`，修订号记录在 `REVISION`）。在 [GitHub Releases](https://github.com/sunqing37/loghelp/releases/tag/v0.0.1) 下载 Windows 64 位便携包，优先选择 `loghelp-0.0.1-windows-amd64-r3.zip`，解压后运行 `loghelp.exe`。ADB 需另行准备，可在设置中选择其位置。发布附件提供 SHA-256 校验文件。
+当前版本 **0.0.2**（`VERSION=0.0.2`、`REVISION=0`）。在 [GitHub Releases](https://github.com/sunqing37/loghelp/releases/tag/v0.0.2) 下载与系统/CPU 匹配的便携包：Windows、macOS（文件名使用 `darwin`）、Linux 各提供 amd64 和 arm64。Windows 解压运行 `loghelp.exe`，macOS/Linux 解压运行 `./loghelp`；若解压工具未保留权限，先执行 `chmod +x loghelp`。ADB 需另行准备，可在设置中选择其位置。附件 `SHA256SUMS.txt` 提供六个 ZIP 的 SHA-256。
 
-见 [0.0.1 发布说明](docs/releases/0.0.1.md) 和 [更新记录](CHANGELOG.md)。
+见 [0.0.2 发布说明](docs/releases/0.0.2.md)、[投屏运行依赖](docs/mirror-runtime.md) 和 [更新记录](CHANGELOG.md)。Windows amd64 内嵌投屏解码库；其余平台投屏需安装匹配架构的 FFmpeg 或配置 `LOGHELP_FFMPEG`。Linux 图片复制另需 wl-clipboard 或 xclip，系统文件对话框另需 zenity/matedialog/qarma。
 
 源码构建时会将 `VERSION` 和 `REVISION` 嵌入程序，版本及修订显示在窗口标题、主界面顶部和设置页。修改任一文件后，构建脚本会识别变更并重新编译。检查更新先比较产品版本，同版本再按整数比较修订号，选择本平台最高修订附件；历史原始包没有修订后缀，视为 `r0`。
 
@@ -16,7 +16,7 @@
 
 Windows EXE 已嵌入与窗口一致的蓝色 `L` 图标。图标源文件为 `assets/loghelp.ico`，多尺寸 PNG/ICO 由 `python scripts/generate-icon.py` 根据现有绘图规则生成；`cmd/loghelp/rsrc_windows_amd64.syso` 和 `rsrc_windows_arm64.syso` 是可直接参与构建的资源文件。
 
-协作规则见 [AGENTS.md](AGENTS.md) 和 [.agent 目录](.agent/README.md)，其中包含 [提交规范](.agent/rules/commit-message.md) 及 [GitHub 发布流程](.agent/workflows/github-release.md)。发布包由 `python -X utf8 .agent/scripts/package-release.py` 基于成功构建记录生成，不重复编译。
+协作规则见 [AGENTS.md](AGENTS.md) 和 [.agent 目录](.agent/README.md)，其中包含 [提交规范](.agent/rules/commit-message.md) 及 [GitHub 发布流程](.agent/workflows/github-release.md)。发布包由 `python -X utf8 .agent/scripts/package-release.py --all` 基于六种完整桌面构建记录生成，不重复编译；不带 `--all` 默认打包 Windows amd64。
 
 ## 当前功能
 
@@ -104,10 +104,11 @@ python scripts/build.py                           # 仅编译检查模块
 python scripts/build.py --target-os linux          # 其他平台模块检查
 python scripts/build.py --desktop                 # 人工确认后的完整桌面构建
 python scripts/build.py --desktop --arch arm64     # ARM64 桌面程序
-python scripts/build.py --desktop --run            # 构建后打开程序
+python scripts/build.py --desktop --run            # 构建后打开本机程序
+python scripts/build.py --desktop --cross-desktop --target-os linux --arch arm64 # 明确授权的交叉链接
 ```
 
-默认目标为当前 Go 主机系统、amd64，完整桌面构建需在对应系统执行。输出为 Windows 的 `bin/loghelp.exe` 或 macOS/Linux 的 `bin/loghelp`。Python 脚本始终关闭 CGO，使用 UTF-8 输出与参数列表调用编译器；在 Windows 使用系统 PowerShell/CIM 检查进程，在 Linux/macOS 使用 `/proc` 或 `ps`。发现其他编译时默认等待最多 600 秒，可通过 `--wait-timeout` 调整。同一源码的成功构建会跳过，在 Windows 可复用现有 PowerShell 脚本的记录；Python 脚本之间另有系统文件锁，退出时自动释放。`--dry-run` 不编译、不启动程序、不写构建记录。
+默认目标为当前 Go 主机系统、amd64。跨系统完整链接需显式传入 `--cross-desktop`（PowerShell 为 `-CrossDesktop`），交叉构建不代替目标平台运行验收。Windows amd64 输出 `bin/loghelp.exe`，其余输出 `bin/<os>-<arch>/loghelp`（Windows 为 `loghelp.exe`），避免架构间覆盖。Python 脚本始终关闭 CGO，使用 UTF-8 输出与参数列表调用编译器；在 Windows 使用系统 PowerShell/CIM 检查进程，在 Linux/macOS 使用 `/proc` 或 `ps`。发现其他编译时默认等待最多 600 秒，可通过 `--wait-timeout` 调整。同一源码的成功构建会跳过，PowerShell 入口也委托相同 Python 实现；构建脚本之间另有系统文件锁，退出时自动释放。`--dry-run` 不编译、不启动程序、不写构建记录。
 
 Windows 界面优先使用微软雅黑，日志优先使用 Consolas，缺失时分别回退到 SimHei 与内置 Go Mono。macOS 尝试 PingFang，Linux 尝试 Noto Sans CJK；可设置 `LOGHELP_FONT` 为支持中文的 TTF/TTC 路径。未找到时回退到内置 Go 字体，中文可能无法显示，字体未捆绑分发。
 

@@ -15,17 +15,19 @@
 
 ```powershell
 python -X utf8 scripts/build.py --desktop
-python -X utf8 .agent/scripts/package-release.py
+python -X utf8 .agent/scripts/package-release.py --all
 ```
 
-打包脚本检查构建指纹和 EXE 哈希，不重新编译。发布目录为 `dist/<版本>/`：
+打包脚本检查目标、版本、构建指纹和二进制哈希，不重新编译。发布目录为 `dist/<版本>/`：
 
-当前统一打包脚本只处理已有的 Windows amd64 桌面构建；不要据此宣称其他平台已经生成发布附件。
+多平台发布逐一执行 `scripts/build.py --desktop --cross-desktop --target-os <os> --arch <arch>`，串行链接 Windows/darwin/Linux 的 amd64/arm64。`--all` 核对六个成功构建记录后打包；也可用 `--target-os` 和 `--arch` 单独打包（默认 Windows amd64）。交叉链接与目标系统运行验收必须分别报告。
+
+打包要求工作区干净，包内源码 commit 必须对应实际版本。若用户要求发布后推送主分支，可先本地提交并推送发布标签，发布完成后再推送主分支；标签与包始终指向同一源码。
 
 - 原始 `r0` 包：`loghelp-<版本>-<os>-<arch>.zip`。
 - 修订 `rN` 包：`loghelp-<版本>-<os>-<arch>-r<N>.zip`。例如 `loghelp-0.0.1-windows-amd64-r3.zip`。
 - 包外校验文件：原始包 `SHA256SUMS.txt`，修订包 `SHA256SUMS-r<N>.txt`，内容记录 ZIP 文件名和 SHA-256。
-- ZIP 内包含 EXE、使用说明、版本/修订元数据及 EXE 校验文件；不要捆绑本地设置、日志、录制、凭据或开发环境。
+- ZIP 内包含平台可执行程序（Windows 为 EXE）、使用说明、版本/修订元数据及程序校验文件；不要捆绑本地设置、日志、录制、凭据或开发环境。
 
 核对 EXE 内嵌版本、修订、Windows 图标和手动验收记录。检查包外校验文件中的文件名与 ZIP 完全一致。
 

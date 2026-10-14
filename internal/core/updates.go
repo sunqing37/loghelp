@@ -19,6 +19,7 @@ type ReleaseUpdate struct {
 	Version, Name, Notes, ReleaseURL, DownloadURL string
 	Digest                                        string
 	Size                                          int64
+	Revision                                      uint64
 	Newer, DownloadAvailable                      bool
 }
 
@@ -48,7 +49,7 @@ func stableVersion(value string) ([3]uint64, error) {
 	return version, nil
 }
 
-func CheckRelease(ctx context.Context, current string) (ReleaseUpdate, error) {
+func CheckRelease(ctx context.Context, current string, currentRevision uint64) (ReleaseUpdate, error) {
 	var update ReleaseUpdate
 	installed, err := stableVersion(current)
 	if err != nil {
@@ -61,7 +62,7 @@ func CheckRelease(ctx context.Context, current string) (ReleaseUpdate, error) {
 		return update, err
 	}
 	request.Header.Set("Accept", "application/vnd.github+json")
-	request.Header.Set("User-Agent", "LogHelp/"+current)
+	request.Header.Set("User-Agent", fmt.Sprintf("LogHelp/%s-r%d", current, currentRevision))
 	client := &http.Client{Timeout: 15 * time.Second}
 	response, err := client.Do(request)
 	if err != nil {
@@ -124,14 +125,60 @@ func CheckRelease(ctx context.Context, current string) (ReleaseUpdate, error) {
 	assetPlatform := "-" + runtime.GOOS + "-" + runtime.GOARCH
 	newestAsset := ""
 	for _, asset := range release.Assets {
-		if strings.HasPrefix(asset.Name, "loghelp-"+update.Version+assetPlatform) &&
-			(strings.HasSuffix(asset.Name, ".zip") || strings.HasSuffix(asset.Name, ".tar.gz")) &&
-			strings.HasPrefix(asset.URL, releaseRepository+"download/") && validReleaseURL(asset.URL) && asset.Created >= newestAsset {
+		revision, matches := releaseAssetRevision(asset.Name, update.Version, assetPlatform)
+		if matches && strings.HasPrefix(asset.URL, releaseRepository+"download/") && validReleaseURL(asset.URL) &&
+			(!update.DownloadAvailable || revision > update.Revision || revision == update.Revision && asset.Created > newestAsset) {
 			update.DownloadURL, newestAsset = asset.URL, asset.Created
 			update.Digest, update.Size, update.DownloadAvailable = asset.Digest, asset.Size, true
+			update.Revision = revision
 		}
 	}
+	if latest == installed && update.DownloadAvailable {
+		update.Newer = update.Revision > currentRevision
+	}
 	return update, nil
+}
+
+// Legacy filenames without an r suffix are revision zero. Revision numbers,
+// rather than upload timestamps, determine which same-version package is newer.
+func releaseAssetRevision(name, version, platform string) (uint64, bool) {
+	prefix := "loghelp-" + version + platform
+	if !strings.HasPrefix(name, prefix) {
+		return 0, false
+	}
+	remaining := strings.TrimPrefix(name, prefix)
+	switch {
+	case strings.HasSuffix(remaining, ".zip"):
+		remaining = strings.TrimSuffix(remaining, ".zip")
+	case strings.HasSuffix(remaining, ".tar.gz") && runtime.GOOS != "windows":
+		remaining = strings.TrimSuffix(remaining, ".tar.gz")
+	default:
+		return 0, false
+	}
+	if remaining == "" {
+		return 0, true
+	}
+	if !strings.HasPrefix(remaining, "-r") {
+		return 0, false
+	}
+	value := strings.TrimPrefix(remaining, "-r")
+	if value == "" || len(value) > 1 && value[0] == '0' {
+		return 0, false
+	}
+	for _, digit := range value {
+		if digit < '0' || digit > '9' {
+			return 0, false
+		}
+	}
+	revision, err := strconv.ParseUint(value, 10, 64)
+	return revision, err == nil && revision > 0
+}
+
+func (update ReleaseUpdate) Label() string {
+	if update.Revision == 0 {
+		return "v" + update.Version
+	}
+	return fmt.Sprintf("v%s · r%d", update.Version, update.Revision)
 }
 
 func validReleaseURL(raw string) bool {

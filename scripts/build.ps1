@@ -59,6 +59,7 @@ try {
     $files = @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'internal') -Filter '*.go' -Recurse)
     $files += @(Get-ChildItem -LiteralPath $projectRoot -Filter '*.go')
     $files += @(Get-Item -LiteralPath (Join-Path $projectRoot 'VERSION'))
+    $files += @(Get-Item -LiteralPath (Join-Path $projectRoot 'REVISION'))
     if ($Desktop) { $files += @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'cmd') -Filter '*.go' -Recurse) }
     if ($Desktop) { $files += @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'cmd') -Filter '*.syso' -Recurse) }
     $files += @(Get-Item -LiteralPath (Join-Path $projectRoot 'go.mod'),(Join-Path $projectRoot 'go.sum'))

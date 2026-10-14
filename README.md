@@ -4,15 +4,19 @@
 
 ## 下载
 
-当前版本 **0.0.1**（版本号记录在 `VERSION`）。在 [GitHub Releases](https://github.com/sunqing37/loghelp/releases/tag/v0.0.1) 下载 Windows 64 位便携包，优先选择 `loghelp-0.0.1-windows-amd64-r2.zip` 修订包，解压后运行 `loghelp.exe`。ADB 需另行准备，可在设置中选择其位置。发布附件提供 SHA-256 校验文件。
+当前版本 **0.0.1 r3**（产品版本记录在 `VERSION`，修订号记录在 `REVISION`）。在 [GitHub Releases](https://github.com/sunqing37/loghelp/releases/tag/v0.0.1) 下载 Windows 64 位便携包，优先选择 `loghelp-0.0.1-windows-amd64-r3.zip`，解压后运行 `loghelp.exe`。ADB 需另行准备，可在设置中选择其位置。发布附件提供 SHA-256 校验文件。
 
 见 [0.0.1 发布说明](docs/releases/0.0.1.md) 和 [更新记录](CHANGELOG.md)。
 
-源码构建时会将 `VERSION` 嵌入程序，版本号显示在窗口标题、主界面顶部和设置页。修改版本文件后，构建脚本会识别变更并重新编译。
+源码构建时会将 `VERSION` 和 `REVISION` 嵌入程序，版本及修订显示在窗口标题、主界面顶部和设置页。修改任一文件后，构建脚本会识别变更并重新编译。检查更新先比较产品版本，同版本再按整数比较修订号，选择本平台最高修订附件；历史原始包没有修订后缀，视为 `r0`。
+
+已经下载的旧 `r2` 只比较产品版本，无法识别同为 `0.0.1` 的 `r3`，需要手动下载并替换一次。使用 `r3` 后，后续 `r4` 等同版本修订可以通过应用内更新替换。
 
 设置页提供“检查更新”，打开独立弹窗，在后台检查 GitHub 最新正式 Release，显示版本和发布说明摘要；关闭后返回原设置页，保留未保存内容和滚动位置。Windows 便携版发现新版后可点击“下载更新并重启”：确认后下载并校验 SHA-256，结束采集、录制和终端，由独立更新进程替换 EXE 并重启，替换或启动失败时恢复旧程序。需要程序目录可写，旧 EXE 保留为备份；其他平台或缺少可校验附件时可手动下载。检查仅在点击按钮时进行，超时或网络错误会显示提示，重启前需先保存设置。
 
 Windows EXE 已嵌入与窗口一致的蓝色 `L` 图标。图标源文件为 `assets/loghelp.ico`，多尺寸 PNG/ICO 由 `python scripts/generate-icon.py` 根据现有绘图规则生成；`cmd/loghelp/rsrc_windows_amd64.syso` 和 `rsrc_windows_arm64.syso` 是可直接参与构建的资源文件。
+
+协作规则见 [AGENTS.md](AGENTS.md) 和 [.agent 目录](.agent/README.md)，其中包含 [提交规范](.agent/rules/commit-message.md) 及 [GitHub 发布流程](.agent/workflows/github-release.md)。发布包由 `python -X utf8 .agent/scripts/package-release.py` 基于成功构建记录生成，不重复编译。
 
 ## 当前功能
 

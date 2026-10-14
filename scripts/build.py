@@ -151,6 +151,7 @@ def fingerprint(desktop):
     files = list((ROOT / "internal").rglob("*.go"))
     files.extend(ROOT.glob("*.go"))
     files.append(ROOT / "VERSION")
+    files.append(ROOT / "REVISION")
     if desktop:
         files.extend((ROOT / "cmd").rglob("*.go"))
         files.extend((ROOT / "cmd").rglob("*.syso"))

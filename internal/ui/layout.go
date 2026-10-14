@@ -99,7 +99,7 @@ func (w *app) rebuild() {
 	w.connectionLabel = nil
 	c := w.colors()
 	root := widget.NewContainer(widget.ContainerOpts.BackgroundImage(uiimage.NewNineSliceColor(c.bg)), widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(1), widget.GridLayoutOpts.Stretch([]bool{true}, []bool{false, true, false}))))
-	brand := row(w.action("L", "active", func() { w.help() }), w.heading("LogHelp"), w.muted("v"+appVersion), w.muted("ANDROID LOG WORKSPACE"))
+	brand := row(w.action("L", "active", func() { w.help() }), w.heading("LogHelp"), w.muted(appVersionLabel), w.muted("ANDROID LOG WORKSPACE"))
 	chrome := stretchRow(brand, row(w.action("打开文件", "quiet", w.openFile), w.action("终端", "quiet", w.openTerminal), w.action("录制管理", "quiet", w.recordings), w.action("设置", "quiet", w.settings)))
 	root.AddChild(w.inset(chrome, 12, c.surface))
 	w.ui = &ebitenui.UI{Container: root, PostRenderHook: w.drawPanels}
@@ -442,27 +442,36 @@ func (w *app) showDialog(title string, content *widget.Container, primary *widge
 	w.modal = true
 	w.terminalFocus = false
 	cw, ch := content.PreferredSize()
-	width := min(w.width-80, max(520, min(cw+48, 860)))
-	if title == "偏好设置" {
-		width = min(w.width-80, 720)
-	}
-	bodyHeight := min(max(ch, 50), min(max(w.height-220, 180), 510))
-	height := bodyHeight + 138
-	container := widget.NewContainer(widget.ContainerOpts.BackgroundImage(w.skin(w.colors().surface, w.colors().line, 10)), widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(1), widget.GridLayoutOpts.Stretch([]bool{true}, []bool{false, true, false}), widget.GridLayoutOpts.Padding(widget.NewInsetsSimple(24)), widget.GridLayoutOpts.Spacing(0, 16))))
+	const padding, spacing = 24, 16
+	header := stretchRow(w.heading(title), w.action("×", "quiet", w.closeModal))
 	footer := row(w.action("关闭", "quiet", w.closeModal))
 	if primary != nil {
 		footer.AddChild(primary)
 	}
-	hint := "Esc 关闭"
-	if ch > bodyHeight {
-		hint = "滚轮浏览更多 · Esc 关闭"
+	hint := w.muted("Esc 关闭")
+	footerRow := stretchRow(hint, footer)
+	headerWidth, headerHeight := header.PreferredSize()
+	footerWidth, footerHeight := footerRow.PreferredSize()
+	width := min(w.width-80, max(520, min(max(cw, headerWidth, footerWidth)+2*padding, 860)))
+	if title == "偏好设置" {
+		width = min(w.width-80, 720)
 	}
+	// Measure the chrome instead of subtracting a guessed fixed height: button
+	// padding and font metrics can otherwise squeeze the body's last row.
+	chromeHeight := 2*padding + 2*spacing + headerHeight + footerHeight
+	bodyLimit := min(510, max(1, w.height-40-chromeHeight))
+	bodyHeight := min(max(ch, 2*controlHeight+12), bodyLimit)
+	if ch > bodyHeight {
+		hint.Label = "滚轮浏览更多 · Esc 关闭"
+	}
+	height := bodyHeight + chromeHeight
+	container := widget.NewContainer(widget.ContainerOpts.BackgroundImage(w.skin(w.colors().surface, w.colors().line, 10)), widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(1), widget.GridLayoutOpts.Stretch([]bool{true}, []bool{false, true, false}), widget.GridLayoutOpts.Padding(widget.NewInsetsSimple(padding)), widget.GridLayoutOpts.Spacing(0, spacing))))
 	var body widget.PreferredSizeLocateableWidget = w.scrollBox(content, bodyHeight)
 	if title == "版本更新" {
 		// Only release notes scroll; version, status and actions stay in place.
 		body = content
 	}
-	container.AddChild(stretchRow(w.heading(title), w.action("×", "quiet", w.closeModal)), body, stretchRow(w.muted(hint), footer))
+	container.AddChild(header, body, footerRow)
 	left, top := (w.width-width)/2, (w.height-height)/2
 	window := widget.NewWindow(widget.WindowOpts.Contents(container), widget.WindowOpts.Modal(), widget.WindowOpts.BlockLower(true), widget.WindowOpts.Location(image.Rect(left, top, left+width, top+height)))
 	w.modalWindow = window
@@ -517,6 +526,7 @@ func (w *app) choices(title string, values []string, apply func(string)) {
 	box := column()
 	search := w.input("", "筛选选项", nil, nil)
 	list := column()
+	var owner *widget.Window
 	refresh := func(value string) {
 		list.RemoveChildren()
 		for _, s := range values {
@@ -527,11 +537,17 @@ func (w *app) choices(title string, values []string, apply func(string)) {
 			list.AddChild(w.button(s, func() { w.closeModal(); apply(s) }))
 		}
 		list.RequestRelayout()
+		box.RequestRelayout()
+		if owner != nil && w.modalWindow == owner {
+			owner.RequestRelayout()
+			w.renderDirty = true
+		}
 	}
 	search.ChangedEvent.AddHandler(func(a any) { refresh(a.(*widget.TextInputChangedEventArgs).InputText) })
 	refresh("")
 	box.AddChild(search, list)
 	w.show(title, box)
+	owner = w.modalWindow
 }
 func (w *app) fieldHints() {
 	p := w.active()

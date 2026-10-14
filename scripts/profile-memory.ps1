@@ -1,7 +1,7 @@
 param(
     [ValidateRange(30,3600)][int]$DurationSeconds = 600,
     [string]$Directory,
-    [ValidateSet('workspace','settings','updates')][string]$Scene = 'workspace',
+    [ValidateSet('workspace','settings','updates','device-picker')][string]$Scene = 'workspace',
     [ValidateSet('auto','opengl','directx')][string]$Graphics = 'auto',
     [switch]$NaturalGC,
     [switch]$LegacyInputs

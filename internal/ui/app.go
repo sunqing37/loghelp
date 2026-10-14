@@ -28,6 +28,8 @@ import (
 )
 
 var appVersion = loghelp.Version
+var appRevision = loghelp.Revision
+var appVersionLabel = fmt.Sprintf("v%s · r%d", appVersion, appRevision)
 
 type page struct {
 	state                                            core.TabState
@@ -150,10 +152,16 @@ func Run() error {
 		w.post(w.settings)
 		w.post(w.showUpdates)
 	}
+	if os.Getenv("LOGHELP_PROFILE_DIR") != "" && os.Getenv("LOGHELP_PROFILE_SCENE") == "device-picker" {
+		// A local sample makes the one-row picker layout inspectable without a device.
+		w.post(func() {
+			w.choices("设备", []string{"Android 设备 · emulator-5554 · device · USB"}, func(string) {})
+		})
+	}
 	go w.monitor()
 	defer w.shutdown()
 	ebiten.SetWindowSize(w.width, w.height)
-	ebiten.SetWindowTitle("LogHelp " + appVersion + " — Android 日志工作台")
+	ebiten.SetWindowTitle(fmt.Sprintf("LogHelp %s r%d — Android 日志工作台", appVersion, appRevision))
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	ebiten.SetWindowSizeLimits(1000, 720, -1, -1)
 	ebiten.SetWindowClosingHandled(true)
@@ -496,6 +504,9 @@ func (w *app) Draw(screen *ebiten.Image) {
 
 func (w *app) profileSnapshotReady() bool {
 	if os.Getenv("LOGHELP_PROFILE_SCENE") == "updates" && (w.profileScene != "版本更新" || w.updateRequests > 0) {
+		return false
+	}
+	if os.Getenv("LOGHELP_PROFILE_SCENE") == "device-picker" && w.profileScene != "设备" {
 		return false
 	}
 	p := w.active()

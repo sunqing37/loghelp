@@ -53,7 +53,7 @@ func (w *app) updateSection() (*widget.Container, func()) {
 	updateButton := w.action("下载更新并重启", "primary", func() {
 		message := w.label("更新将下载并校验新版，然后结束采集、录制和终端并重启应用。未保存的设置不会保留。是否继续？")
 		message.MaxWidth = 580
-		w.showNestedDialog("更新至 v"+latest.Version, column(message, row(w.action("确认更新", "primary", func() {
+		w.showNestedDialog("更新至 "+latest.Label(), column(message, row(w.action("确认更新", "primary", func() {
 			w.modalReturn = nil
 			w.closeModal()
 			w.installUpdate(latest)
@@ -76,7 +76,7 @@ func (w *app) updateSection() (*widget.Container, func()) {
 		notesScroll.ScrollTop = 0
 		relayout(owner)
 		go func() {
-			result, err := core.CheckRelease(w.ctx, appVersion)
+			result, err := core.CheckRelease(w.ctx, appVersion, appRevision)
 			w.post(func() {
 				w.updateRequests--
 				if w.modalWindow != owner {
@@ -89,11 +89,11 @@ func (w *app) updateSection() (*widget.Container, func()) {
 				} else {
 					latest = result
 					if result.Newer {
-						status.Label = "发现新版本 v" + result.Version + "（当前 v" + appVersion + "）"
-					} else if result.Version == appVersion {
-						status.Label = "已是最新版本 v" + appVersion
+						status.Label = "发现更新 " + result.Label() + "（当前 " + appVersionLabel + "）"
+					} else if result.Version == appVersion && result.Revision == appRevision {
+						status.Label = "已是最新版本 " + appVersionLabel
 					} else {
-						status.Label = "当前 v" + appVersion + "；最新正式发布 v" + result.Version + "，无需更新"
+						status.Label = "当前 " + appVersionLabel + "；最新正式发布 " + result.Label() + "，无需更新"
 					}
 					releaseButton.GetWidget().Disabled = false
 					updateButton.GetWidget().Disabled = !result.Newer || !core.AutomaticUpdateSupported() || !result.DownloadAvailable || result.Digest == ""
@@ -110,7 +110,7 @@ func (w *app) updateSection() (*widget.Container, func()) {
 	}
 	checkButton = w.action("重新检查", "quiet", check)
 	content = widget.NewContainer(widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(1), widget.GridLayoutOpts.Stretch([]bool{true}, []bool{false, false, true, false}), widget.GridLayoutOpts.Spacing(0, 12))))
-	content.AddChild(stretchRow(w.label("LogHelp v"+appVersion), checkButton), status, notesScroll, row(releaseButton, updateButton, downloadButton))
+	content.AddChild(stretchRow(w.label("LogHelp "+appVersionLabel), checkButton), status, notesScroll, row(releaseButton, updateButton, downloadButton))
 	return content, check
 }
 

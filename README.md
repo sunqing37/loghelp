@@ -2,6 +2,12 @@
 
 独立的 Android Logcat 桌面工具，界面和核心均使用 Go，采用 Ebitengine + EbitenUI。Windows、macOS、Linux 编译均可关闭 CGO，仅需 Go 编译器。无需 Node.js、TypeScript、浏览器或 Android Studio。
 
+## 下载
+
+当前版本 **0.0.1**（版本号记录在 `VERSION`）。在 [GitHub Releases](https://github.com/sunqing37/loghelp/releases/tag/v0.0.1) 下载 Windows 64 位便携包，解压后运行 `loghelp.exe`。ADB 需另行准备，可在设置中选择其位置。发布附件提供 SHA-256 校验文件。
+
+见 [0.0.1 发布说明](docs/releases/0.0.1.md) 和 [更新记录](CHANGELOG.md)。
+
 ## 当前功能
 
 - 从 PATH 自动查找 ADB，支持选择 executable 或 platform-tools 目录、版本校验和设置保存。

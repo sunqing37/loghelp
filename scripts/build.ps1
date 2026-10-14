@@ -56,6 +56,8 @@ try {
     } while ($busy.Count -gt 0)
 
     New-Item -ItemType Directory -Force -Path $artifactRoot | Out-Null
+	& python -X utf8 (Join-Path $PSScriptRoot 'prepare-mirror.py')
+	if ($LASTEXITCODE -ne 0) { throw 'Cannot prepare verified mirror runtime.' }
     $files = @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'internal') -Filter '*.go' -Recurse)
     $files += @(Get-ChildItem -LiteralPath $projectRoot -Filter '*.go')
     $files += @(Get-Item -LiteralPath (Join-Path $projectRoot 'VERSION'))
@@ -63,6 +65,7 @@ try {
     if ($Desktop) { $files += @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'cmd') -Filter '*.go' -Recurse) }
     if ($Desktop) { $files += @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'cmd') -Filter '*.syso' -Recurse) }
     $files += @(Get-Item -LiteralPath (Join-Path $projectRoot 'go.mod'),(Join-Path $projectRoot 'go.sum'))
+	$files += @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'internal/mirrorassets') -Filter '*.zip')
     $fingerprint = (($files | Sort-Object FullName | ForEach-Object { $_.FullName + ':' + (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash }) -join "`n")
     $mode = if ($Desktop) { 'desktop' } else { 'modules' }
     $stamp = Join-Path $artifactRoot "$mode-$TargetOS-$Architecture.json"

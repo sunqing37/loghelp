@@ -156,6 +156,8 @@ def fingerprint(desktop):
         files.extend((ROOT / "cmd").rglob("*.go"))
         files.extend((ROOT / "cmd").rglob("*.syso"))
     files.extend([ROOT / "go.mod", ROOT / "go.sum"])
+
+    files.extend((ROOT / "internal/mirrorassets").glob("*.zip"))
     # Match build.ps1 stamps on Windows to avoid recompiling an unchanged app.
     return "\n".join(
         f"{path}:{hashlib.sha256(path.read_bytes()).hexdigest().upper()}"
@@ -244,6 +246,10 @@ def main():
     deadline = time.monotonic() + args.wait_timeout
     with build_lock(deadline):
         wait_for_builds(deadline)
+        if target_os in {"windows", "darwin", "linux"}:
+            import runpy
+            mirror = runpy.run_path(str(ROOT / "scripts/prepare-mirror.py"))
+            mirror["prepare"]()
         source_hash = fingerprint(args.desktop)
         if up_to_date(stamp, source_hash, args.desktop, output):
             print("Source unchanged since the successful check; skipping duplicate build.")

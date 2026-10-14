@@ -82,6 +82,10 @@ type app struct {
 	tabScroll                                                     *widget.ScrollContainer
 	tabDrag                                                       tabDragState
 	devices                                                       []core.Device
+	preview                                                       *devicePreview
+	previewStreams                                                []*core.ScreenStream
+	profileDeviceCopyDone                                         bool
+	previewDeviceRequest                                          uint64
 	face                                                          text.Face
 	uiFace, smallFace, titleFace                                  text.Face
 	fontSource, monoSource                                        *text.GoTextFaceSource
@@ -123,8 +127,15 @@ type app struct {
 
 func Run() error {
 	config, configErr := core.LoadConfig()
+	deviceDiagnostic := os.Getenv("LOGHELP_PROFILE_DIR") != "" && os.Getenv("LOGHELP_PROFILE_SCENE") == "device-preview"
+	if deviceDiagnostic {
+		config, configErr = core.DefaultConfig(), nil
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	w := &app{config: config, ctx: ctx, cancel: cancel, tasks: make(chan func(), 128), displayScale: monitorScale(), configWritable: configErr == nil}
+	if deviceDiagnostic {
+		w.configWritable = false
+	}
 	w.width, w.height = w.px(1440), w.px(900)
 	w.backgroundDiagnostic = os.Getenv("LOGHELP_PROFILE_DIR") != "" && os.Getenv("LOGHELP_PROFILE_BACKGROUND") == "1"
 	w.loadFace()
@@ -144,6 +155,9 @@ func Run() error {
 		}
 	}
 	w.rebuild()
+	if deviceDiagnostic {
+		w.post(func() { w.startDevicePreview(os.Getenv("LOGHELP_PROFILE_DEVICE")) })
+	}
 	if os.Getenv("LOGHELP_PROFILE_DIR") != "" && os.Getenv("LOGHELP_PROFILE_SCENE") == "settings" {
 		w.post(w.settings)
 	}
@@ -390,6 +404,7 @@ func (w *app) shutdown() {
 	}
 	w.save()
 	w.cancel()
+	w.disposeDevicePreview()
 	for _, p := range w.pages {
 		if p.cancel != nil {
 			p.cancel()
@@ -399,6 +414,17 @@ func (w *app) shutdown() {
 		}
 	}
 	w.hub.Close()
+	// Allow our stream workers to finish removing their own ADB forwarding and
+	// temporary server files before the process exits.
+	deadline := time.NewTimer(8 * time.Second)
+	defer deadline.Stop()
+	for _, stream := range w.previewStreams {
+		select {
+		case <-stream.Done():
+		case <-deadline.C:
+			return
+		}
+	}
 }
 func (w *app) monitor() {
 	ticker := time.NewTicker(2 * time.Second)
@@ -487,6 +513,17 @@ ready:
 		w.applyProfileSelection(p)
 		w.updateChrome()
 	}
+	w.updateDevicePreview(allowInput)
+	activeStreams := w.previewStreams[:0]
+	for _, stream := range w.previewStreams {
+		select {
+		case <-stream.Done():
+		default:
+			activeStreams = append(activeStreams, stream)
+		}
+	}
+	clear(w.previewStreams[len(activeStreams):])
+	w.previewStreams = activeStreams
 	return nil
 }
 func (w *app) Draw(screen *ebiten.Image) {
@@ -511,15 +548,26 @@ func (w *app) Draw(screen *ebiten.Image) {
 		w.paintedAt = time.Now()
 		if !w.profileSnapshotSaved && os.Getenv("LOGHELP_PROFILE_SNAPSHOT") == "1" && os.Getenv("LOGHELP_PROFILE_DIR") != "" && w.profileSnapshotReady() {
 			w.profileSnapshotSaved = true
+			w.drawDeviceScreen(w.canvas)
 			w.saveProfileSnapshot()
 		}
 	}
 	screen.DrawImage(w.canvas, nil)
+	w.drawDeviceScreen(screen)
 	w.drawTabDrag(screen)
 	w.applyCursor()
 }
 
 func (w *app) profileSnapshotReady() bool {
+	if os.Getenv("LOGHELP_PROFILE_SCENE") == "device-preview" {
+		d := w.preview
+		if d == nil || d.texture == nil || !d.ready || d.statsFrames == 0 || time.Since(d.statsAt) > time.Second {
+			return false
+		}
+		if os.Getenv("LOGHELP_PROFILE_COPY_SCREENSHOT") == "1" && (d.busy || !strings.HasPrefix(d.notice, "截图已复制")) {
+			return false
+		}
+	}
 	if os.Getenv("LOGHELP_PROFILE_SCENE") == "updates" && (w.profileScene != "版本更新" || w.updateRequests > 0) {
 		return false
 	}

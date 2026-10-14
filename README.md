@@ -22,6 +22,7 @@ Windows EXE 已嵌入与窗口一致的蓝色 `L` 图标。图标源文件为 `a
 
 - 从 PATH 自动查找 ADB，支持选择 executable 或 platform-tools 目录、版本校验和设置保存。
 - 设备状态与热插拔、指定序列号采集、应用包名选择、进程变化事件、断线重试及中断标记。
+- 顶部「设备预览」打开右侧 H.264 视频投屏面板，支持独立切换设备、暂停显示/重连、原分辨率截图保存与复制，以及实时触摸、拖动、返回、主页、最近任务和唤醒。流配置上限 60 FPS，界面显示实际接收/解码帧率；不再使用定时 PNG 抓屏刷新。
 - 多标签页独立过滤，同设备相同配置共享采集；复制、重命名、排序和配置恢复。每个标签右侧可直接关闭，Ctrl+W（macOS：Cmd+W）关闭当前标签；关闭时取消查询、释放视图缓存和终端连接，正在录制的会话保留在录制管理中。
 - 日志/ADB 文件、录制目录和导出位置使用系统文件对话框；导出直接“另存为”，设置选路径时保留其他未保存的字段。
 - 鼠标按组件切换系统光标：输入框/已连接终端为文本光标，可点击按钮/标签/日志行为手型，空白和禁用控件为箭头；光标更新不依赖界面缓存重绘。
@@ -39,6 +40,14 @@ Windows EXE 已嵌入与窗口一致的蓝色 `L` 图标。图标源文件为 `a
 
 Windows amd64 EXE 已生成（`bin/loghelp.exe`），完成启动、真实设备采集、过滤/搜索、双标签共享、录制/离线分页及 Shell 连接的基础手动检查。完整场景及其他平台实际运行状态见 [手动验收记录](docs/manual-validation.md)。尚未生成安装包；macOS/Linux 目前只验证模块编译。
 
+投屏的 ADB/scrcpy 协议、会话、视频缓冲和渲染共用一套 Go 实现，Windows/macOS/Linux 均有解码与图片剪贴板路径，仍以 `CGO_ENABLED=0` 编译。Windows amd64 EXE 内嵌官方 scrcpy 3.3.4 的服务和 FFmpeg 7.1.1 解码库，首次投屏解压至用户缓存。macOS/Linux（以及未捆绑解码库的架构）优先加载兼容 FFmpeg 7 的动态库，找不到时使用 FFmpeg 5 或更高版本的可执行程序；只嵌入 Android 服务不等于已捆绑当地平台的 FFmpeg。
+
+FFmpeg 可安装到 PATH、放在程序旁 `runtime/ffmpeg`（Windows 为 `runtime/ffmpeg.exe`），或用 `LOGHELP_FFMPEG` 指定路径；macOS 也识别 Homebrew 常见位置。可通过 `LOGHELP_MIRROR_RUNTIME` 指定包含匹配架构动态库与 `scrcpy-server` 的替代运行库目录。Windows 图片剪贴板发布原 PNG 与标准位图，macOS 使用 AppKit 图片对象，Linux Wayland 需要 `wl-clipboard`、X11 需要 `xclip`。缺依赖时界面显示具体原因和安装/指定路径方式。
+
+面板固定绑定设备，切换日志标签不改变目标；打开面板时最小窗口宽度为 1440。视频最长边上限 1280，屏幕横竖尺寸改变时重建纹理；GPU 转换颜色，缓冲只保留最新帧，视频更新不重绘全部日志。暂停只冻结显示，恢复立即取最新帧。失焦、弹窗、关闭和旋转会结束触摸；关闭投屏取消会话，退出等待本会话转发与临时服务清理。截图按钮单独抓取原分辨率 PNG，不使用缩小的视频帧；「保存截图」打开另存为，「复制截图」直接写图片剪贴板。设备画面本身静止时实际帧率可能降低，不代表配置保证持续 60 FPS。
+
+新版 Windows EXE 位于 `bin/loghelp.exe`。Windows 已验证真实设备视频接收、应用自有画面和原分辨率图片剪贴板格式；macOS/Linux 的实际桌面、粘贴与触摸交互仍需在目标系统验收，具体编译/运行记录见 [手动验收记录](docs/manual-validation.md)。
+
 ## 工程结构
 
 ```text
@@ -55,6 +64,8 @@ openspec/changes/build-desktop-logcat/  需求、设计和任务进度
 ## 编译与启动
 
 需要 **Go 1.25 或更高版本**，构建脚本始终设置 `CGO_ENABLED=0`，无需安装 GCC、Clang、MinGW 或 Xcode 编译工具。Ebitengine 从 2.10 起支持所有桌面平台的纯 Go 构建，见 [官方发布说明](https://ebitengine.org/en/documents/2.10.html)。
+
+构建脚本先调用 `scripts/prepare-mirror.py`，从固定的官方附件下载并核验 SHA-256，生成架构无关的 Android 服务资源和 Windows amd64 解码库资源，并纳入指纹。首次构建需要联网及 Python 3；后续复用缓存。直接调用 `go build` 前也需运行该准备脚本。第三方版本、许可证及源代码入口见 [投屏依赖说明](docs/mirror-runtime.md)。
 
 Linux 运行仍需 X11/XWayland、系统图形库和可用显卡驱动；不需要 C 开发头文件。剪贴板需要 wl-clipboard、xclip 或 xsel。Windows 使用系统剪贴板，macOS 使用系统 pbcopy/pbpaste。平台运行条件见 [官方安装说明](https://ebitengine.org/en/documents/install.html)。
 

@@ -4,6 +4,7 @@ go 1.25.0
 
 require (
 	github.com/atotto/clipboard v0.1.4
+	github.com/ebitengine/purego v0.11.0
 	github.com/ebitenui/ebitenui v0.7.3
 	github.com/hajimehoshi/ebiten/v2 v2.10.5
 	github.com/hinshun/vt10x v0.0.0-20220301184237-5011da428d02
@@ -17,7 +18,6 @@ require (
 	github.com/dchest/jsmin v1.0.0 // indirect
 	github.com/ebitengine/gomobile v0.0.0-20260820040257-d11f821a26a6 // indirect
 	github.com/ebitengine/hideconsole v1.0.0 // indirect
-	github.com/ebitengine/purego v0.11.0 // indirect
 	github.com/frustra/bbcode v0.0.0-20201127003707-6ef347fbe1c8 // indirect
 	github.com/go-text/typesetting v0.3.5 // indirect
 	github.com/josephspurrier/goversioninfo v1.7.0 // indirect

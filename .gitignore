@@ -11,6 +11,8 @@
 
 # Local logs and profiling artifacts
 /artifacts/
+/internal/mirrorassets/runtime_windows_amd64.zip
+/internal/mirrorassets/runtime_common.zip
 *.log
 *.pprof
 

@@ -109,13 +109,21 @@ func (w *app) rebuild() {
 	c := w.colors()
 	root := widget.NewContainer(widget.ContainerOpts.BackgroundImage(uiimage.NewNineSliceColor(c.bg)), widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(1), widget.GridLayoutOpts.Stretch([]bool{true}, []bool{false, true, false}))))
 	brand := w.row(w.action("L", "active", func() { w.help() }), w.heading("LogHelp"), w.muted(appVersionLabel), w.muted("ANDROID LOG WORKSPACE"))
-	chrome := w.stretchRow(brand, w.row(w.action("打开文件", "quiet", w.openFile), w.action("终端", "quiet", w.openTerminal), w.action("录制管理", "quiet", w.recordings), w.action("设置", "quiet", w.settings)))
+	previewKind := "quiet"
+	if w.preview != nil {
+		previewKind = "active"
+	}
+	chrome := w.stretchRow(brand, w.row(w.action("打开文件", "quiet", w.openFile), w.action("设备预览", previewKind, w.openDevicePreview), w.action("终端", "quiet", w.openTerminal), w.action("录制管理", "quiet", w.recordings), w.action("设置", "quiet", w.settings)))
 	root.AddChild(w.inset(chrome, 12, c.surface))
 	w.ui = &ebitenui.UI{Container: root, PostRenderHook: w.drawPanels}
 	if p == nil {
 		return
 	}
-	workspace := widget.NewContainer(widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(2), widget.GridLayoutOpts.Stretch([]bool{false, true}, []bool{true}))))
+	columns, stretch := 2, []bool{false, true}
+	if w.preview != nil {
+		columns, stretch = 3, []bool{false, true, false}
+	}
+	workspace := widget.NewContainer(widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(columns), widget.GridLayoutOpts.Stretch(stretch, []bool{true}))))
 	workspace.AddChild(w.sidebar(p))
 	main := widget.NewContainer(widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(1), widget.GridLayoutOpts.Stretch([]bool{true}, []bool{false, false, false, false, true, false}), widget.GridLayoutOpts.Spacing(0, w.px(8)))))
 	main.AddChild(w.tabStrip())
@@ -212,6 +220,9 @@ func (w *app) rebuild() {
 		}
 	}
 	workspace.AddChild(w.inset(main, 14, c.bg))
+	if w.preview != nil {
+		workspace.AddChild(w.devicePanel())
+	}
 	root.AddChild(workspace)
 	w.statusLabel = w.statusText(p.status)
 	root.AddChild(w.inset(w.statusLabel, 6, c.sidebar))

@@ -14,6 +14,13 @@ import (
 )
 
 func main() {
+	if handled, err := handleMirrorCheck(os.Args[1:]); handled {
+		if err != nil {
+			log.Print(err)
+			os.Exit(1)
+		}
+		return
+	}
 	if handled, err := handleReleaseQuery(os.Args[1:]); handled {
 		if err != nil {
 			log.Print(err)

@@ -732,6 +732,9 @@ after:"2026-10-12 10:00:00" before:"2026-10-12 11:00:00"
 默认 100 MiB 轮转、目录 2 GiB；自动清理默认关闭。
 离线打开 manifest.json 或 threadtime 文本，2000 条分页。
 Ctrl/Cmd+F/L 搜索/过滤，F3/Shift+F3 匹配导航。
+输入框 Ctrl/Cmd+Z 撤销，Ctrl/Cmd+Shift+Z 或 Ctrl+Y 重做。
+输入框 Ctrl/Cmd+A/C/X/V 全选/复制/剪切/粘贴；编辑历史独立。
+输入框双击选中附近单词；双击后拖动按词扩展，Shift+方向键扩展选区。
 选中日志后 ↑/↓ 移动到相邻行，长按连续移动；自动滚动并更新详情。
 Ctrl/Cmd+T/W 新建/关闭，Ctrl+Tab/Shift+Ctrl+Tab 切换。
 按住标签名称左右拖动调整顺序，松开保存；Esc 或移出标签栏松开取消。

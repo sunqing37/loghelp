@@ -28,6 +28,7 @@ func (w *app) statusText(s string) *widget.Text {
 func (w *app) button(s string, fn func()) *widget.Button { return w.action(s, "", fn) }
 func (w *app) buttonColor() color.NRGBA                  { return w.colors().elevated }
 func (w *app) input(value, placeholder string, change func(string), submit func()) *boundedInput {
+	value = singleLineInput(value)
 	c := w.colors()
 	_, fontHeight := text.Measure(" ", w.uiFace, 0)
 	verticalPadding := max(6, (controlHeight-int(math.Ceil(fontHeight)))/2)
@@ -51,7 +52,12 @@ func (w *app) input(value, placeholder string, change func(string), submit func(
 		}
 	})
 	entry.SetText(value)
-	return &boundedInput{TextInput: entry, legacyDiagnostic: os.Getenv("LOGHELP_PROFILE_DIR") != "" && os.Getenv("LOGHELP_PROFILE_LEGACY_INPUTS") == "1"}
+	input := &boundedInput{TextInput: entry, editText: value, cursor: len([]rune(value)), anchor: -1,
+		face: &w.uiFace, images: images, padding: widget.Insets{Left: 12, Right: 12, Top: verticalPadding, Bottom: verticalPadding},
+		foreground: c.text, muted: c.muted, placeholder: placeholder,
+		legacyDiagnostic: os.Getenv("LOGHELP_PROFILE_DIR") != "" && os.Getenv("LOGHELP_PROFILE_LEGACY_INPUTS") == "1"}
+	entry.GetWidget().CustomData = input
+	return input
 }
 func row(children ...widget.PreferredSizeLocateableWidget) *widget.Container {
 	box := widget.NewContainer(widget.ContainerOpts.Layout(widget.NewRowLayout(widget.RowLayoutOpts.Direction(widget.DirectionHorizontal), widget.RowLayoutOpts.Spacing(5))))

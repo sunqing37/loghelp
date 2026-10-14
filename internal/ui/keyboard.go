@@ -105,8 +105,10 @@ func (w *app) keyboard() {
 	if w.tabDrag.page != nil {
 		return
 	}
+	if w.inputEditingKeys() {
+		return
+	}
 	if w.modal {
-		w.pasteInput()
 		return
 	}
 	p := w.active()
@@ -127,7 +129,6 @@ func (w *app) keyboard() {
 	if w.logKeys(p) {
 		return
 	}
-	w.pasteInput()
 	if w.shortcut("find") && p.shell == nil {
 		w.ui.SetFocusedWidget(w.searchInput)
 	}
@@ -210,6 +211,39 @@ func (w *app) logArrowPressed(key ebiten.Key) bool {
 	}
 	return true
 }
+
+// Editing chords take precedence over configurable workspace shortcuts only
+// while an enabled text input owns focus. Undo/redo runs in boundedInput.Update.
+func (w *app) inputEditingKeys() bool {
+	focused := w.ui.GetFocusedWidget()
+	if focused == nil || focused.GetWidget().Disabled || !modifierDown("mod") || modifierDown("alt") {
+		return false
+	}
+	if _, ok := focused.(interface{ Insert(string) }); !ok {
+		return false
+	}
+	if input, ok := focused.(interface{ IsFocused() bool }); !ok || !input.IsFocused() {
+		return false
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyZ) || ebiten.IsKeyPressed(ebiten.KeyY) {
+		return true
+	}
+	for _, key := range []ebiten.Key{ebiten.KeyArrowLeft, ebiten.KeyArrowRight, ebiten.KeyHome, ebiten.KeyEnd} {
+		if ebiten.IsKeyPressed(key) {
+			return true
+		}
+	}
+	if !modifierDown("shift") {
+		for _, key := range []ebiten.Key{ebiten.KeyA, ebiten.KeyC, ebiten.KeyX, ebiten.KeyV} {
+			if inpututil.IsKeyJustPressed(key) {
+				w.pasteInput()
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (w *app) pasteInput() {
 	mod := ebiten.IsKeyPressed(ebiten.KeyControl)
 	if runtime.GOOS == "darwin" {
@@ -218,7 +252,15 @@ func (w *app) pasteInput() {
 	if !mod {
 		return
 	}
-	if input, ok := w.ui.GetFocusedWidget().(interface {
+	widget := w.ui.GetFocusedWidget()
+	if widget == nil {
+		return
+	}
+	var focused any = widget
+	if control, ok := widget.GetWidget().CustomData.(*boundedInput); ok {
+		focused = control
+	}
+	if input, ok := focused.(interface {
 		SelectAll()
 		SelectedText() string
 		DeleteSelectedText()

@@ -46,14 +46,7 @@ func (w *app) rename() {
 	}
 }
 func (w *app) move(delta int) {
-	next := w.selected + delta
-	if next >= 0 && next < len(w.pages) {
-		w.syncInputs()
-		w.pages[w.selected], w.pages[next] = w.pages[next], w.pages[w.selected]
-		w.selected = next
-		w.rebuild()
-		w.save()
-	}
+	w.moveTab(w.active(), w.selected+delta)
 }
 func (w *app) clearView() {
 	p := w.active()
@@ -78,7 +71,8 @@ func (w *app) clearView() {
 	p.groupScratch, p.groupRowsScratch, p.groupDetailSource = nil, nil, nil
 	p.detailCache = detailTextCache{}
 	p.detailSelection = detailSelection{}
-	p.selected = -1
+	p.selectRow(-1)
+	p.viewportSeq = 0
 	p.selectFirst = false
 	p.scroll, p.detailScroll, p.detailX = 0, 0, 0
 	w.renderDirty = true
@@ -285,7 +279,7 @@ func (w *app) nextMatch(reverse bool) {
 }
 func (w *app) selectLog(p *page, index int) {
 	p.detailSelection = detailSelection{}
-	p.selected = index
+	p.selectRow(index)
 	p.scroll = max(index-w.visibleRows()/2, 0)
 	p.follow = false
 	p.detailScroll = 0
@@ -728,7 +722,9 @@ after:"2026-10-12 10:00:00" before:"2026-10-12 11:00:00"
 默认 100 MiB 轮转、目录 2 GiB；自动清理默认关闭。
 离线打开 manifest.json 或 threadtime 文本，2000 条分页。
 Ctrl/Cmd+F/L 搜索/过滤，F3/Shift+F3 匹配导航。
+选中日志后 ↑/↓ 移动到相邻行，长按连续移动；自动滚动并更新详情。
 Ctrl/Cmd+T/W 新建/关闭，Ctrl+Tab/Shift+Ctrl+Tab 切换。
+按住标签名称左右拖动调整顺序，松开保存；Esc 或移出标签栏松开取消。
 Ctrl/Cmd+Shift+P 暂停，Ctrl/Cmd+End 到末尾。
 终端 Ctrl+C 中断；Ctrl+Shift+C/V 复制/粘贴。
 终端固定设备，断线不重放命令；历史默认关闭。

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"sort"
 	"strings"
 
 	"loghelp/internal/core"
@@ -91,6 +92,45 @@ func (p *page) rowMembers(index int) []*core.Entry {
 func (p *page) rowLastSeq(index int) uint64 {
 	rows := p.rowMembers(index)
 	return rows[len(rows)-1].Seq
+}
+
+// Query results and merged groups preserve the source's sequence order.
+func (p *page) rowAtOrAfterSeq(seq uint64) int {
+	return sort.Search(len(p.result.Rows), func(i int) bool {
+		return p.rowLastSeq(i) >= seq
+	})
+}
+
+func (p *page) rowContainingSeq(seq uint64) int {
+	if seq == 0 {
+		return -1
+	}
+	index := p.rowAtOrAfterSeq(seq)
+	if index == len(p.result.Rows) || p.result.Rows[index].Seq > seq {
+		return -1
+	}
+	return index
+}
+
+// Explicit selection starts a new anchor. Automatic regrouping keeps this
+// original sequence even when it is no longer the displayed group's first row.
+func (p *page) selectRow(index int) {
+	p.selected = index
+	p.selectionSeq = 0
+	p.keepSelectionVisible = false
+	if index >= 0 && index < len(p.result.Rows) {
+		p.selectionSeq = p.result.Rows[index].Seq
+	}
+}
+
+func (p *page) scrollAnchorSeq() uint64 {
+	if p.scroll < 0 || p.scroll >= len(p.result.Rows) {
+		return 0
+	}
+	if p.rowContainingSeq(p.viewportSeq) == p.scroll {
+		return p.viewportSeq
+	}
+	return p.result.Rows[p.scroll].Seq
 }
 
 func (p *page) detailEntry(index int) *core.Entry {

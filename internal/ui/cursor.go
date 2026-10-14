@@ -21,6 +21,10 @@ func (w *app) hoverCursor(shape ebiten.CursorShapeType) widget.WidgetOpt {
 }
 
 func (w *app) updatePanelCursor(p *page) {
+	if w.tabDrag.dragging && !w.tabDrag.canceled {
+		w.cursorShape = ebiten.CursorShapeEWResize
+		return
+	}
 	if w.detailDragging {
 		w.cursorShape = ebiten.CursorShapeNSResize
 		return

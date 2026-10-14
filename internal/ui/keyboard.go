@@ -83,6 +83,10 @@ func (w *app) shortcut(name string) bool {
 }
 func (w *app) keyboard() {
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		if w.tabDrag.page != nil {
+			w.tabDrag.canceled = true
+			return
+		}
 		if p := w.active(); p != nil && p.shell != nil && w.terminalFocus && !w.modal && !w.ui.HasFocus() {
 			w.shellInput(p, "\x1b")
 			return
@@ -96,6 +100,9 @@ func (w *app) keyboard() {
 				p.detailSelection = detailSelection{}
 			}
 		}
+		return
+	}
+	if w.tabDrag.page != nil {
 		return
 	}
 	if w.modal {
@@ -115,6 +122,9 @@ func (w *app) keyboard() {
 		return
 	}
 	if w.detailKeys(p) {
+		return
+	}
+	if w.logKeys(p) {
 		return
 	}
 	w.pasteInput()
@@ -145,12 +155,60 @@ func (w *app) keyboard() {
 		w.pause()
 	}
 	if w.shortcut("end") {
+		p.keepSelectionVisible = false
 		p.follow = true
 		p.scroll = max(len(p.result.Rows)-w.visibleRows(), 0)
 	}
 	if !w.ui.HasFocus() && modifierDown("mod") && inpututil.IsKeyJustPressed(ebiten.KeyC) {
 		w.copySelected()
 	}
+}
+func (w *app) logKeys(p *page) bool {
+	if p.shell != nil || w.ui.HasFocus() || w.detailDragging || p.detailSelection.dragging || p.selected < 0 || p.selected >= len(p.result.Rows) {
+		return false
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyControl) || ebiten.IsKeyPressed(ebiten.KeyMeta) || ebiten.IsKeyPressed(ebiten.KeyAlt) || ebiten.IsKeyPressed(ebiten.KeyShift) {
+		return false
+	}
+	delta := 0
+	if w.logArrowPressed(ebiten.KeyArrowUp) {
+		delta--
+	}
+	if w.logArrowPressed(ebiten.KeyArrowDown) {
+		delta++
+	}
+	if delta == 0 {
+		return false
+	}
+	p.keepSelectionVisible = false
+	index := max(0, min(p.selected+delta, len(p.result.Rows)-1))
+	if index == p.selected {
+		return true
+	}
+	p.selectRow(index)
+	p.detailSelection = detailSelection{}
+	p.detailScroll, p.detailX = 0, 0
+	p.follow = false
+	visible := w.visibleRows()
+	// Scroll only when the selection leaves the viewport.
+	p.scroll = max(index-visible+1, min(p.scroll, index))
+	p.scroll = max(0, min(p.scroll, max(len(p.result.Rows)-visible, 0)))
+	w.renderDirty = true
+	return true
+}
+func (w *app) logArrowPressed(key ebiten.Key) bool {
+	if !keyRepeat(key) {
+		return false
+	}
+	for name, value := range w.config.Shortcuts {
+		if defaultShortcuts[name] == "" || strings.Contains(value, "+") {
+			continue
+		}
+		if bound, err := shortcutKey(value); err == nil && bound == key {
+			return false
+		}
+	}
+	return true
 }
 func (w *app) pasteInput() {
 	mod := ebiten.IsKeyPressed(ebiten.KeyControl)

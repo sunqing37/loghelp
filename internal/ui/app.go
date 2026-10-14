@@ -51,7 +51,9 @@ type page struct {
 	frozen, stopped                                  []*core.Entry
 	paused, follow, caseSensitive, regex, dead, busy bool
 	clearSeq, version, job                           uint64
+	selectionSeq, viewportSeq                        uint64
 	offset, scroll, selected, detailScroll, detailX  int
+	viewportRows                                     int
 	refreshAt, editAt                                time.Time
 	dirty                                            bool
 	cancel                                           context.CancelFunc
@@ -76,6 +78,9 @@ type app struct {
 	closing                                                       atomic.Bool
 	pages                                                         []*page
 	selected                                                      int
+	tabWidgets                                                    []tabWidget
+	tabScroll                                                     *widget.ScrollContainer
+	tabDrag                                                       tabDragState
 	devices                                                       []core.Device
 	face                                                          text.Face
 	uiFace, smallFace, titleFace                                  text.Face
@@ -434,6 +439,9 @@ ready:
 	if w.detailDragging && (!allowInput || w.modal) {
 		w.finishDetailResize()
 	}
+	if !allowInput && w.tabDrag.page != nil {
+		w.tabDrag.canceled = true
+	}
 	if allowInput {
 		w.cursorShape = ebiten.CursorShapeDefault
 		mx, my := ebiten.CursorPosition()
@@ -449,8 +457,10 @@ ready:
 			}
 		}
 		w.lastMouseX, w.lastMouseY, w.hadKeys = mx, my, hasKeys
+		w.updateTabDrag()
 		w.keyboard()
 		w.ui.Update()
+		w.finishTabDrag()
 	}
 	p := w.active()
 	if p != nil {
@@ -499,6 +509,7 @@ func (w *app) Draw(screen *ebiten.Image) {
 		}
 	}
 	screen.DrawImage(w.canvas, nil)
+	w.drawTabDrag(screen)
 	w.applyCursor()
 }
 
@@ -674,10 +685,6 @@ func (w *app) refresh(p *page, force bool) {
 	} else {
 		entries = p.stopped
 	}
-	selectedSeq := uint64(0)
-	if p.selected >= 0 && p.selected < len(p.result.Rows) {
-		selectedSeq = p.result.Rows[p.selected].Seq
-	}
 	go func() {
 		var result core.Page
 		var err error
@@ -710,6 +717,17 @@ func (w *app) refresh(p *page, force bool) {
 				}
 				return
 			}
+			// Read the current view at delivery time: clicks, keyboard navigation
+			// and wheel scrolling may have happened while the query was running.
+			selectedSeq, topSeq := p.selectionSeq, p.scrollAnchorSeq()
+			// Explicit offline paging must keep its requested scroll reset.
+			samePage := source == nil || result.Offset == p.result.Offset
+			visible := p.viewportRows
+			if p == w.active() || visible <= 0 {
+				visible = w.visibleRows()
+			}
+			selectedOffset := p.selected - p.scroll
+			selectedVisible := p.selected >= 0 && selectedOffset >= 0 && selectedOffset < visible
 			if len(p.groups) > 0 {
 				p.groupScratch, p.groupRowsScratch = p.groups, p.result.Rows
 				// The retired display array is exclusively owned by the UI.
@@ -721,29 +739,39 @@ func (w *app) refresh(p *page, force bool) {
 			p.groups = groups
 			p.version = version
 			p.refreshAt = time.Now()
-			p.selected = -1
-			for i, e := range result.Rows {
-				if e.Seq == selectedSeq || e.Seq <= selectedSeq && p.rowLastSeq(i) >= selectedSeq {
-					p.selected = i
-					break
+			p.selected = p.rowContainingSeq(selectedSeq)
+			if p.selected < 0 {
+				p.selectionSeq = 0
+			}
+			if !p.follow && samePage {
+				if selectedVisible && p.selected >= 0 {
+					// Keep the selected log at the same screen row when earlier
+					// entries expire or the number of merged groups changes.
+					p.scroll = max(p.selected-selectedOffset, 0)
+				} else if topSeq != 0 {
+					// Scrolling away from the selection anchors the top visible
+					// log instead; if it expires, use its nearest successor.
+					p.scroll = min(p.rowAtOrAfterSeq(topSeq), max(len(result.Rows)-1, 0))
 				}
 			}
 			if p.selectFirst && len(result.Rows) > 0 {
 				p.selectFirst = false
-				p.selected = 0
+				p.selectRow(0)
 				p.scroll = 0
 				p.detailScroll = 0
 			}
 			if p.keepSelectionVisible {
 				if p.selected >= 0 {
-					p.scroll = max(p.selected-w.visibleRows()/2, 0)
+					p.scroll = max(p.selected-visible/2, 0)
 				}
 				p.keepSelectionVisible = false
 			}
 			if p.follow && !p.paused {
-				p.scroll = max(len(result.Rows)-w.visibleRows(), 0)
+				p.scroll = max(len(result.Rows)-visible, 0)
 			}
 			p.scroll = max(0, min(p.scroll, max(len(result.Rows)-1, 0)))
+			p.viewportSeq = topSeq
+			p.viewportSeq = p.scrollAnchorSeq()
 			if source != nil {
 				scope := fmt.Sprintf("离线 %d–%d · age 锚点 %s", offset+1, offset+len(rawResult.Rows), result.Anchor.Format(time.RFC3339))
 				state := ""

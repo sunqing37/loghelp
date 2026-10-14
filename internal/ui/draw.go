@@ -226,6 +226,7 @@ func (w *app) drawPanels(screen *ebiten.Image) {
 		}
 	}
 	rows := w.visibleRows()
+	p.viewportRows = rows
 	if p.follow && !p.paused {
 		p.scroll = max(len(p.result.Rows)-rows, 0)
 	}
@@ -403,7 +404,7 @@ func (w *app) wrap(s string, width float64) []string {
 }
 
 func (w *app) mouse(p *page) {
-	if w.modal {
+	if w.modal || w.tabDrag.page != nil {
 		return
 	}
 	x, y := ebiten.CursorPosition()
@@ -425,7 +426,7 @@ func (w *app) mouse(p *page) {
 				index := p.scroll + (y-rect.Min.Y)/w.rowHeight()
 				if index < len(p.result.Rows) {
 					p.detailSelection = detailSelection{}
-					p.selected = index
+					p.selectRow(index)
 					p.detailScroll = 0
 					p.detailX = 0
 					p.follow = false
@@ -438,6 +439,7 @@ func (w *app) mouse(p *page) {
 				return
 			}
 			p.follow = false
+			p.keepSelectionVisible = false
 			p.scroll = max(0, min(p.scroll-int(wheel*3), max(len(p.result.Rows)-w.visibleRows(), 0)))
 		}
 	}

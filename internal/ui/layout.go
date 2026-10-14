@@ -80,6 +80,8 @@ func (w *app) inputRow(label string, entry *boundedInput, buttons ...widget.Pref
 
 func (w *app) rebuild() {
 	w.cursorShape = ebiten.CursorShapeDefault
+	w.tabWidgets = nil
+	w.tabDrag = tabDragState{}
 	w.detailArea, w.detailSplitter = nil, nil
 	w.detailDragging, w.detailDragChanged = false, false
 	for _, input := range []*boundedInput{w.serialInput, w.appInput, w.buffersInput, w.filterInput, w.searchInput, w.commandInput} {
@@ -146,6 +148,7 @@ func (w *app) rebuild() {
 		}
 		w.pauseButton = w.action(pause, "quiet", w.pause)
 		w.followButton = w.action("跟随", followKind, func() {
+			p.keepSelectionVisible = false
 			p.follow = !p.follow
 			if p.follow {
 				p.scroll = max(len(p.result.Rows)-w.visibleRows(), 0)
@@ -198,7 +201,7 @@ func (w *app) rebuild() {
 				}
 			}))))
 		} else {
-			main.AddChild(w.muted("Shift + 滚轮横向浏览  ·  F3 / Shift+F3 在匹配间跳转"))
+			main.AddChild(w.muted("↑ / ↓ 移动选中日志  ·  Shift + 滚轮横向浏览  ·  F3 / Shift+F3 在匹配间跳转"))
 		}
 	}
 	workspace.AddChild(w.inset(main, 14, c.bg))
@@ -277,10 +280,22 @@ func (w *app) tabStrip() *widget.Container {
 			fill = w.colors().accentSoft
 		}
 		tab := widget.NewContainer(widget.ContainerOpts.BackgroundImage(w.skin(fill, fill, 6)), widget.ContainerOpts.Layout(widget.NewRowLayout(widget.RowLayoutOpts.Direction(widget.DirectionHorizontal))))
-		tab.AddChild(w.action(name, kind, func() { w.selectPage(i) }), w.action("×", kind, func() { w.closeTab(p) }))
+		title := w.action(name, kind, func() {
+			if !w.tabDrag.dragging && !w.tabDrag.canceled {
+				w.selectPage(i)
+			}
+		})
+		tab.AddChild(title, w.action("×", kind, func() { w.closeTab(p) }))
+		w.tabWidgets = append(w.tabWidgets, tabWidget{page: p, title: title.GetWidget(), body: tab.GetWidget()})
 		tabs.AddChild(tab)
 	}
-	return stretchRow(w.scrollBox(tabs, 38), row(w.action("+", "quiet", func() { w.syncInputs(); w.newPage(core.TabState{Name: "Logcat"}); w.rebuild(); w.save() }), w.action("标签", "quiet", w.tabMenu)))
+	scrollLeft := 0.0
+	if w.tabScroll != nil {
+		scrollLeft = w.tabScroll.ScrollLeft
+	}
+	w.tabScroll = w.scrollBox(tabs, 38)
+	w.tabScroll.ScrollLeft = scrollLeft
+	return stretchRow(w.tabScroll, row(w.action("+", "quiet", func() { w.syncInputs(); w.newPage(core.TabState{Name: "Logcat"}); w.rebuild(); w.save() }), w.action("标签", "quiet", w.tabMenu)))
 }
 func (w *app) openFile() {
 	w.browse("file", func(path string) {

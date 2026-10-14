@@ -10,7 +10,7 @@
 | `.agent/project.md` | 定位模块、版本、构建及验收资料 |
 | `.agent/rules/code-guardrails.md` | 修改或审查业务代码、UI、更新功能 |
 | `.agent/rules/build-and-validation.md` | 编译、运行与手动验收 |
-| `.agent/rules/commit-message.md` | 准备提交、推送或 PR |
+| `.agent/rules/commit-message.md` | 生成 review、按功能分类拆分提交、准备推送或 PR |
 | `.agent/rules/changelog.md` | 准备提交或发布 |
 | `.agent/workflows/github-release.md` | GitHub Release、修订包、附件上传与校验 |
 

@@ -11,8 +11,6 @@ import sys
 
 
 ROOT = Path(__file__).resolve().parents[2]
-TITLE = re.compile(r"\[(feat|fix|modify|add|docs|chore)\]（[^（）\r\n]+）[^\r\n]+「[^「」\r\n]+」")
-SECTIONS = ("[问题原因]", "[解决方式]", "[影响范围]", "[验证情况]")
 AI_TRAILER = re.compile(
     r"^Co-authored-by:\s*(?:Cursor|Claude|Codex|GitHub Copilot|Copilot|AI)\b",
     re.IGNORECASE | re.MULTILINE,
@@ -29,25 +27,20 @@ def git(*arguments: str, input_text: str | None = None) -> str:
 
 def validate(message: str) -> None:
     lines = message.strip().splitlines()
-    if not lines or not TITLE.fullmatch(lines[0]):
-        raise ValueError("标题须为 [type]（模块）描述「单号或无」，type 为 feat/fix/modify/add/docs/chore。")
-    if len(lines) < 3 or lines[1].strip():
-        raise ValueError("标题后须空一行，再填写四段提交正文。")
+    if not lines or not lines[0].strip():
+        raise ValueError("提交信息须包含非空的单行标题。")
+    if len(lines) > 1 and lines[1].strip():
+        raise ValueError("填写可选正文时，标题后须空一行。")
     if AI_TRAILER.search(message):
         raise ValueError("提交正文不能包含自动 AI Co-authored-by trailer。")
-    body = "\n".join(lines[2:])
-    positions = []
-    for section in SECTIONS:
-        matches = list(re.finditer(r"^" + re.escape(section) + r"$", body, re.MULTILINE))
-        if len(matches) != 1:
-            raise ValueError(f"正文须且仅须包含一个 {section}。")
-        positions.append(matches[0])
-    if [item.start() for item in positions] != sorted(item.start() for item in positions):
-        raise ValueError("正文四段顺序须为问题原因、解决方式、影响范围、验证情况。")
-    for index, section in enumerate(positions):
-        end = positions[index + 1].start() if index + 1 < len(positions) else len(body)
-        if not body[section.end():end].strip():
-            raise ValueError(f"{SECTIONS[index]} 需要填写实际内容。")
+    # GitHub recommends these lengths; keep them advisory for existing history
+    # and indivisible URLs, paths, or trailers. Retain generated Git messages.
+    if lines[0].startswith(("Merge ", "Revert ")):
+        return
+    if len(lines[0]) >= 50:
+        print("WARN: GitHub 建议提交标题少于 50 个字符。", file=sys.stderr)
+    if any(len(line) >= 72 for line in lines[2:]):
+        print("WARN: GitHub 建议正文每行尽量少于 72 个字符；可保留完整链接、路径或 trailer。", file=sys.stderr)
 
 
 def main() -> int:

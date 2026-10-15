@@ -32,6 +32,7 @@ var appRevision = loghelp.Revision
 var appVersionLabel = fmt.Sprintf("v%s · r%d", appVersion, appRevision)
 
 type page struct {
+	timeAnchor                                       *timeAnchor
 	state                                            core.TabState
 	collector                                        *core.Collector
 	recordingPaths                                   []string
@@ -64,6 +65,7 @@ type page struct {
 	detailSelection                                  detailSelection
 }
 type app struct {
+	logToolsLabel                                                 *widget.Text
 	backgroundDiagnostic                                          bool
 	profileScene                                                  string
 	profileSnapshotSaved                                          bool
@@ -668,6 +670,7 @@ func (w *app) start(p *page) {
 	p.offline = nil
 	p.state.File = ""
 	p.paused = false
+	p.timeAnchor = nil
 	p.frozen = nil
 	p.stopped = nil
 	p.clearSeq = 0
@@ -897,6 +900,7 @@ func (w *app) openOfflineAt(p *page, path string, target *core.Entry) {
 
 func (w *app) openOfflineTarget(p *page, path string, target *core.Entry, bookmark *core.Bookmark) {
 	w.stop(p)
+	p.timeAnchor = nil
 	p.state.File = path
 	p.offline = nil
 	p.stopped, p.frozen = nil, nil

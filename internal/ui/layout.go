@@ -96,6 +96,7 @@ func (w *app) rebuild() {
 	}
 	w.serialInput, w.appInput, w.buffersInput, w.filterInput, w.searchInput, w.commandInput = nil, nil, nil, nil, nil, nil
 	w.sourceLabel, w.resultLabel, w.statusLabel = nil, nil, nil
+	w.logToolsLabel = nil
 	w.renderDirty = true
 	defer func() {
 		if w.modal && w.modalWindow != nil {
@@ -196,7 +197,10 @@ func (w *app) rebuild() {
 		}), w.copyDetailButton, w.action("复制全部", "quiet", w.copySelected), w.action("上下文", "quiet", w.context)))
 		w.detailPanel = widget.NewContainer(widget.ContainerOpts.WidgetOpts(widget.WidgetOpts.MinSize(w.px(200), w.px(minDetailBody))))
 		group := widget.NewContainer(widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(1), widget.GridLayoutOpts.Stretch([]bool{true}, []bool{false, true}), widget.GridLayoutOpts.Spacing(0, w.px(8)))))
-		group.AddChild(w.column(header, w.row(w.action("快速过滤", "quiet", w.quickFilter), w.action("书签", "quiet", w.bookmarks))), w.detailPanel)
+		w.logToolsLabel = w.muted(p.timeDifferenceText())
+		w.logToolsLabel.MaxWidth = float64(w.px(400))
+		tools := w.stretchRow(w.row(w.action("快速过滤", "quiet", w.quickFilter), w.action("书签", "quiet", w.bookmarks), w.action("时间差", "quiet", w.timeDifference)), w.logToolsLabel)
+		group.AddChild(w.column(header, tools), w.detailPanel)
 		w.detailSplitter = widget.NewContainer(widget.ContainerOpts.WidgetOpts(widget.WidgetOpts.MinSize(0, w.px(detailDividerHeight)), w.hoverCursor(ebiten.CursorShapeNSResize)))
 		w.detailArea = widget.NewContainer(widget.ContainerOpts.Layout(&detailSplitLayout{app: w}))
 		w.detailArea.AddChild(w.logPanel, w.detailSplitter, group)
@@ -406,6 +410,7 @@ func (w *app) updateChrome() {
 	if w.pauseButton != nil {
 		w.pauseButton.GetWidget().Disabled = p.collector == nil
 	}
+	update(w.logToolsLabel, p.timeDifferenceText())
 	if w.copyDetailButton != nil {
 		start, end := p.detailSelection.bounds()
 		w.copyDetailButton.GetWidget().Disabled = p.selected < 0 || p.selected >= len(p.result.Rows) || end <= start || p.detailCache.entry == nil || end > len(p.detailCache.entry.Raw)

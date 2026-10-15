@@ -1,11 +1,20 @@
 package ui
 
 import (
-	"loghelp/internal/core"
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
+
+	"loghelp/internal/core"
 )
+
+type timeAnchor struct {
+	time       time.Time
+	serial     string
+	generation uint64
+}
 
 func selectedEntry(p *page) *core.Entry {
 	if p == nil || p.shell != nil || p.selected < 0 || p.selected >= len(p.result.Rows) {
@@ -104,6 +113,46 @@ func shortText(value string, limit int) string {
 	}
 	return value
 }
+
+func (w *app) timeDifference() {
+	p := w.active()
+	if p == nil || p.shell != nil {
+		return
+	}
+	box := w.column(w.label(p.timeDifferenceText()), w.muted("按设备日志时间计算；合并组使用首条日志。"))
+	if e := selectedEntry(p); e != nil && !e.Event && !e.Time.IsZero() {
+		anchor := &timeAnchor{time: e.Time, serial: e.Serial, generation: e.Generation}
+		box.AddChild(w.button("将当前日志设为起点", func() {
+			p.timeAnchor = anchor
+			w.closeModal()
+			w.renderDirty = true
+		}))
+	}
+	if p.timeAnchor != nil {
+		box.AddChild(w.button("清除时间起点", func() { p.timeAnchor = nil; w.closeModal(); w.renderDirty = true }))
+	}
+	w.show("时间差", box)
+}
+
+func (p *page) timeDifferenceText() string {
+	if p.timeAnchor == nil {
+		return "时间差：未设置起点"
+	}
+	a := p.timeAnchor
+	prefix := "起点 " + a.time.Format("15:04:05.000")
+	e := selectedEntry(p)
+	if e == nil {
+		return prefix + " · 请选择终点日志"
+	}
+	if e.Event || e.Time.IsZero() {
+		return prefix + " · 当前日志无有效设备时间"
+	}
+	if e.Serial != a.serial || e.Generation != a.generation {
+		return prefix + " · 不同设备或采集代次，无法比较"
+	}
+	return fmt.Sprintf("%s · Δt %+.3f s", prefix, e.Time.Sub(a.time).Seconds())
+}
+
 func (w *app) addBookmark() {
 	p := w.active()
 	e := selectedEntry(p)

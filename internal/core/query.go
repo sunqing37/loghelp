@@ -19,6 +19,7 @@ type Query struct {
 	Match         Predicate
 	Text          string
 	TimeDependent bool
+	sensitive     bool
 }
 
 func lex(input string) ([]token, error) {
@@ -90,7 +91,7 @@ func CompileQuery(text string, sensitive bool) (Query, error) {
 		return Query{}, err
 	}
 	if len(tokens) == 0 {
-		return Query{Match: func(*Entry, time.Time) bool { return true }, Text: text}, nil
+		return Query{Match: func(*Entry, time.Time) bool { return true }, Text: text, sensitive: sensitive}, nil
 	}
 	p := parser{tokens: tokens, sensitive: sensitive}
 	pred, err := p.or()
@@ -104,7 +105,7 @@ func CompileQuery(text string, sensitive bool) (Query, error) {
 			timeDependent = true
 		}
 	}
-	return Query{Match: pred, Text: text, TimeDependent: timeDependent}, err
+	return Query{Match: pred, Text: text, TimeDependent: timeDependent, sensitive: sensitive}, err
 }
 func combine(a, b Predicate, or bool) Predicate {
 	if or {

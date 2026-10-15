@@ -467,6 +467,7 @@ func (w *app) scrollBox(content widget.PreferredSizeLocateableWidget, height int
 }
 func (w *app) show(title string, content *widget.Container) { w.showDialog(title, content, nil) }
 func (w *app) showDialog(title string, content *widget.Container, primary *widget.Button) {
+	w.cancelAnalysis()
 	w.cancelUpdateCheck()
 	w.cancelWirelessOperation()
 	w.profileScene = title
@@ -513,6 +514,7 @@ func (w *app) showDialog(title string, content *widget.Container, primary *widge
 	w.removeModal = w.ui.AddWindow(window)
 }
 func (w *app) closeModal() {
+	w.cancelAnalysis()
 	w.cancelUpdateCheck()
 	w.cancelWirelessOperation()
 	back := w.modalReturn

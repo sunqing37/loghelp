@@ -120,6 +120,10 @@ type app struct {
 	removeModal                                                   widget.RemoveWindowFunc
 	modalWindow                                                   *widget.Window
 	modalReturn                                                   func()
+	analysisCancel                                                func()
+	analysisPage                                                  *page
+	analysisJob                                                   uint64
+	analysisLabel                                                 *widget.Text
 	terminalFocus                                                 bool
 	configWritable                                                bool
 	canvas                                                        *ebiten.Image
@@ -884,18 +888,25 @@ func (w *app) updateLiveStatus(p *page) {
 func (w *app) openOffline(p *page, path string) {
 	w.stop(p)
 	p.state.File = path
-	p.status = "扫描文件时间范围…"
-	ctx, cancel := context.WithCancel(w.ctx)
-	p.cancel = cancel
-	p.job++
-	job := p.job
+	p.offline = nil
+	p.stopped, p.frozen = nil, nil
+	p.result, p.rawResult = core.Page{}, core.Page{}
+	p.groups, p.groupDetail = nil, nil
+	p.groupScratch, p.groupRowsScratch, p.groupDetailSource = nil, nil, nil
+	p.detailCache = detailTextCache{}
+	p.detailSelection = detailSelection{}
+	p.selectRow(-1)
+	p.clearSeq, p.offset, p.scroll = 0, 0, 0
+	ctx, job, progress := w.beginPageJob(p, "建立离线索引", 0)
 	go func() {
-		source, err := core.OpenOffline(ctx, path)
+		source, err := core.OpenOfflineProgress(ctx, path, progress)
 		w.post(func() {
-			if p.dead || job != p.job {
+			if p.dead || job != p.job || ctx.Err() != nil {
 				return
 			}
+			p.busy = false
 			if err != nil {
+				p.cancel()
 				p.status = "打开失败：" + err.Error()
 				return
 			}

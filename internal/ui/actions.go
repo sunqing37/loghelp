@@ -267,24 +267,21 @@ func (w *app) nextMatch(reverse bool) {
 	if reverse && p.selected < 0 {
 		after = p.offset
 	}
-	if p.cancel != nil {
-		p.cancel()
-	}
-	ctx, cancel := context.WithCancel(w.ctx)
-	p.cancel = cancel
-	p.job++
-	job := p.job
+	ctx, job, progress := w.beginPageJob(p, "定位搜索匹配", source.Bytes)
 	go func() {
-		index, err := source.Find(ctx, q, search, pkg, after, reverse)
+		index, err := source.FindProgress(ctx, q, search, pkg, after, reverse, progress)
 		w.post(func() {
 			if p.dead || p.job != job {
 				return
 			}
+			p.busy = false
 			if err != nil {
+				p.cancel()
 				p.status = err.Error()
 				return
 			}
 			if index < 0 {
+				p.cancel()
 				p.status = "已到搜索边界"
 				return
 			}
@@ -369,20 +366,14 @@ func (w *app) jumpTime() {
 			return
 		}
 		source, q, pkg := p.offline, p.query, p.state.Package
+		ctx, job, progress := w.beginPageJob(p, "按时间定位", source.Bytes)
+		finish := w.showAnalysisProgress(p, ctx, job, "按时间定位")
 		go func() {
-			index, found := 0, -1
-			err := source.Scan(w.ctx, func(e *core.Entry) bool {
-				if !q.Match(e, source.Anchor) || pkg != "" && e.Package != pkg {
-					return true
-				}
-				if !e.Time.IsZero() && !e.Time.Before(date) {
-					found = index
-					return false
-				}
-				index++
-				return true
-			}, nil)
+			found, err := source.FindTime(ctx, q, pkg, date, progress)
 			w.post(func() {
+				if !finish() {
+					return
+				}
 				if err != nil {
 					w.message("定位失败", err.Error())
 				} else if found < 0 {

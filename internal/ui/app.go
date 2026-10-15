@@ -213,6 +213,12 @@ func Run(activations <-chan struct{}) error {
 			w.choices("设备", []string{"Android 设备 · emulator-5554 · device · USB"}, func(string) {})
 		})
 	}
+	if w.backgroundDiagnostic && os.Getenv("LOGHELP_PROFILE_SCENE") == "wireless-pair-error" {
+		// Offline layout preview only: no pairing request or credentials.
+		w.post(func() {
+			w.wirelessFormStatus("pair", "", "配对失败。请核对手机配对页面的 IP、配对端口和新配对码；检查 VPN/TUN 是否接管局域网连接。\nADB 原始信息：error: protocol fault (couldn't read status message): No error")
+		})
+	}
 	go w.monitor()
 	go w.monitorSystemTheme(w.systemColorMode)
 	defer w.shutdown()

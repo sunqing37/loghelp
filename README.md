@@ -69,6 +69,8 @@ FFmpeg 可安装到 PATH、放在程序旁 `runtime/ffmpeg`（Windows 为 `runti
 
 成功后关闭连接窗口，在「选择设备」中选中标记为 `Wi-Fi` 的在线设备，即可采集日志；终端和投屏也能选择该设备。连接操作在后台执行，普通操作最长 30 秒，扫码等待最长 2 分钟；关闭/切换窗口会取消当前请求，已经完成的配对或 TCP 模式切换不会自动撤销。失败时核对地址、调试授权、防火墙和网络是否隔离。
 
+IP 地址需完整保留英文点分隔；纯数字连写、非法 IPv4 或无效主机名会在提交前提示。配对失败时弹窗显示目标地址、换行后的完整 ADB 原始错误及排查提示；配对端口与连接端口不可混用。若手机或电脑使用 VPN/TUN，检查局域网调试流量是否被接管，必要时临时暂停后重新打开手机配对页获取当前地址、端口和新配对码。程序不会自动改动代理或系统路由。
+
 「断开指定无线设备」仅断开选中的 ADB 网络连接，会中断该连接上的采集、录制、终端和投屏，不关闭手机调试开关或清除配对记录。Android 无线调试的自动发现可能再次建立连接；要彻底禁用，请在手机关闭无线调试，传统 TCP 模式可在 USB 连接后执行 `adb -s <USB序列号> usb` 或重启手机。
 
 扫码协议参照 [AOSP ADB Wi-Fi 架构](https://android.googlesource.com/platform/packages/modules/adb/+/refs/heads/main/docs/dev/adb_wifi.md)。二维码编码使用纯 Go 的 [go-qrcode](https://github.com/skip2/go-qrcode)，固定提交 `da1b6568686e`，由 `go.sum` 校验，无新增运行时外部程序；许可证见 [go-qrcode MIT 许可](docs/licenses/go-qrcode.txt)。

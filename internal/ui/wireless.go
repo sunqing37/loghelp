@@ -7,8 +7,38 @@ import (
 	"time"
 
 	"github.com/ebitenui/ebitenui/widget"
+	"github.com/hajimehoshi/ebiten/v2/text/v2"
 	"loghelp/internal/core"
 )
+
+// EbitenUI wraps at spaces only. Explicit rune-safe lines also bound Chinese
+// instructions and unbroken ADB diagnostics inside the scroll viewport.
+func (w *app) wirelessText(value string, width int) string {
+	var result, line strings.Builder
+	for _, r := range value {
+		if r == '\r' {
+			continue
+		}
+		if r == '\n' {
+			result.WriteString(line.String())
+			result.WriteByte('\n')
+			line.Reset()
+			continue
+		}
+		candidate := line.String() + string(r)
+		measured, _ := text.Measure(candidate, w.uiFace, 0)
+		if measured > float64(width) && line.Len() > 0 {
+			result.WriteString(line.String())
+			result.WriteByte('\n')
+			line.Reset()
+		}
+		line.WriteRune(r)
+	}
+	result.WriteString(line.String())
+	return result.String()
+}
+
+func (w *app) wirelessContentWidth() int { return max(w.px(240), min(w.px(640), w.width-w.px(128))) }
 
 func (w *app) cancelWirelessOperation() {
 	if w.wirelessCancel != nil {
@@ -77,6 +107,10 @@ func (w *app) chooseWirelessDisconnect() {
 }
 
 func (w *app) wirelessForm(mode, serial string) {
+	w.wirelessFormStatus(mode, serial, "")
+}
+
+func (w *app) wirelessFormStatus(mode, serial, initialStatus string) {
 	client := w.client
 	if client == nil {
 		w.message("Wi-Fi 设备", "请先在设置中配置可用的 ADB。")
@@ -99,12 +133,12 @@ func (w *app) wirelessForm(mode, serial string) {
 		success = "已断开指定无线设备。"
 	}
 	box := w.column()
-	description := w.label(hint)
-	description.MaxWidth = float64(w.px(640))
+	contentWidth := w.wirelessContentWidth()
+	box.GetWidget().MinWidth = contentWidth
+	description := w.label(w.wirelessText(hint, contentWidth))
 	box.AddChild(description)
 	if serial != "" {
-		device := w.label("目标设备：" + serial)
-		device.MaxWidth = float64(w.px(640))
+		device := w.label(w.wirelessText("目标设备："+serial, contentWidth))
 		box.AddChild(device)
 	}
 	address := w.input("", "例如 192.168.1.10:5555", nil, nil)
@@ -115,10 +149,21 @@ func (w *app) wirelessForm(mode, serial string) {
 	if mode == "pair" {
 		box.AddChild(w.muted("配对码（不保存）"), code)
 	}
-	status := w.label("等待操作。连接失败时请检查地址、调试授权和 Wi-Fi 网络。")
-	status.MaxWidth = float64(w.px(640))
+	if initialStatus == "" {
+		initialStatus = "等待操作。连接失败时请检查地址、调试授权和 Wi-Fi 网络。"
+	}
+	status := w.label(w.wirelessText(initialStatus, contentWidth))
+	status.SetPosition(&widget.TextPositioning{HTextPosition: widget.TextPositionStart, VTextPosition: widget.TextPositionStart})
 	status.GetWidget().MinHeight = w.px(80)
 	var owner *widget.Window
+	setStatus := func(value string) {
+		status.Label = w.wirelessText(value, contentWidth)
+		box.RequestRelayout()
+		if owner != nil {
+			owner.RequestRelayout()
+		}
+		w.renderDirty = true
+	}
 	var submit *widget.Button
 	busy := false
 	submit = w.action(action, "primary", func() {
@@ -130,15 +175,19 @@ func (w *app) wirelessForm(mode, serial string) {
 			var err error
 			endpoint, err = core.NormalizeADBAddress(endpoint)
 			if err != nil {
-				status.Label = err.Error()
+				setStatus(err.Error())
 				return
 			}
+		}
+		if mode == "pair" && (len(pairingCode) != 6 || strings.IndexFunc(pairingCode, func(c rune) bool { return c < '0' || c > '9' }) >= 0) {
+			setStatus("请输入手机当前页面显示的 6 位数字配对码。")
+			return
 		}
 		busy = true
 		submit.GetWidget().Disabled = true
 		address.GetWidget().Disabled = true
 		code.GetWidget().Disabled = true
-		status.Label = "正在" + action + "，请稍候…（最长 30 秒，关闭窗口可取消）"
+		setStatus("正在" + action + "，请稍候…（最长 30 秒，关闭窗口可取消）")
 		ctx, cancel := context.WithTimeout(w.ctx, 30*time.Second)
 		w.wirelessCancel = cancel
 		go func() {
@@ -171,15 +220,14 @@ func (w *app) wirelessForm(mode, serial string) {
 				if refreshErr == nil {
 					w.devices = devices
 				}
+				message := success
 				if err != nil {
-					status.Label = err.Error()
-				} else {
-					status.Label = success
+					message = err.Error()
 				}
 				if refreshErr != nil {
-					status.Label += "\n设备列表暂未刷新，请关闭窗口后等待自动刷新。"
+					message += "\n设备列表暂未刷新，请关闭窗口后等待自动刷新。"
 				}
-				box.RequestRelayout()
+				setStatus(message)
 			})
 		}()
 	})

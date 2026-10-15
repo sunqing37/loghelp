@@ -21,6 +21,9 @@ func NormalizeADBAddress(value string) (string, error) {
 		return "", fmt.Errorf("端口必须为 1–65535")
 	}
 	if net.ParseIP(host) == nil {
+		if strings.IndexFunc(host, func(c rune) bool { return c != '.' && (c < '0' || c > '9') }) < 0 {
+			return "", fmt.Errorf("IP 地址格式错误：IPv4 必须为四段 0–255 的数字并用英文点分隔，例如 192.168.1.10；请直接核对手机页面，不要省略点")
+		}
 		// Allow DNS/mDNS host names, but never flags, URLs or shell syntax.
 		if len(host) > 253 || host[0] == '-' || host[0] == '.' {
 			return "", fmt.Errorf("设备地址必须为 IP 或有效主机名")
@@ -28,6 +31,11 @@ func NormalizeADBAddress(value string) (string, error) {
 		for _, c := range host {
 			if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '.') {
 				return "", fmt.Errorf("设备地址必须为 IP 或有效主机名")
+			}
+		}
+		for _, label := range strings.Split(strings.TrimSuffix(host, "."), ".") {
+			if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+				return "", fmt.Errorf("设备主机名格式错误，请核对手机显示的 IP 地址")
 			}
 		}
 	}
@@ -67,6 +75,9 @@ func (a *ADB) wirelessCommand(ctx context.Context, serial, input, success string
 		if err != nil {
 			response = err.Error()
 		}
+	}
+	if args[0] == "pair" {
+		return fmt.Errorf("配对失败（%s）。请保持手机配对码页面打开，核对该页的 IP、配对端口及新配对码；连接端口不能用于配对。若两端开了 VPN/TUN，请检查其是否接管局域网连接。\nADB 原始信息：%s", args[1], response)
 	}
 	return fmt.Errorf("ADB %s 失败：%s", args[0], response)
 }

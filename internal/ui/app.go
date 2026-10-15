@@ -34,6 +34,7 @@ var appVersionLabel = fmt.Sprintf("v%s · r%d", appVersion, appRevision)
 type page struct {
 	state                                            core.TabState
 	collector                                        *core.Collector
+	recordingPaths                                   []string
 	hub                                              *core.Hub
 	offline                                          *core.Offline
 	shell                                            *shellState
@@ -690,6 +691,7 @@ func (w *app) stop(p *page) {
 	p.refreshAt = time.Time{}
 	if p.collector != nil {
 		p.stopped, _, _ = p.collector.Ring.Snapshot()
+		p.recordingPaths = p.collector.RecordingDirectories()
 		p.hub.Release(p.collector)
 		p.collector = nil
 	}
@@ -886,6 +888,10 @@ func (w *app) updateLiveStatus(p *page) {
 	p.status = fmt.Sprintf("实时缓存 · %d/%d 条 · 搜索 %d 处 · 淘汰 %d · %s", len(p.rawResult.Rows), result.Total, result.SearchCount, result.Dropped, state)
 }
 func (w *app) openOffline(p *page, path string) {
+	w.openOfflineAt(p, path, nil)
+}
+
+func (w *app) openOfflineAt(p *page, path string, target *core.Entry) {
 	w.stop(p)
 	p.state.File = path
 	p.offline = nil
@@ -900,6 +906,11 @@ func (w *app) openOffline(p *page, path string) {
 	ctx, job, progress := w.beginPageJob(p, "建立离线索引", 0)
 	go func() {
 		source, err := core.OpenOfflineProgress(ctx, path, progress)
+		var seq uint64
+		var locateErr error
+		if err == nil && target != nil {
+			seq, locateErr = source.FindRecorded(ctx, target, progress)
+		}
 		w.post(func() {
 			if p.dead || job != p.job || ctx.Err() != nil {
 				return
@@ -913,6 +924,9 @@ func (w *app) openOffline(p *page, path string) {
 			p.offline = source
 			p.state.Name = filepath.Base(path)
 			p.offset = 0
+			if seq != 0 {
+				p.offset = int(seq - 1)
+			}
 			p.follow = false
 			p.scroll = 0
 			p.selectFirst = true
@@ -921,6 +935,9 @@ func (w *app) openOffline(p *page, path string) {
 				w.rebuild()
 			}
 			w.save()
+			if locateErr != nil {
+				w.message("录制定位", locateErr.Error())
+			}
 		})
 	}()
 }

@@ -44,10 +44,12 @@ type Config struct {
 	RetentionDays    int               `json:"retention_days"`
 	Cleanup          bool              `json:"cleanup"`
 	Shortcuts        map[string]string `json:"shortcuts,omitempty"`
+	ContextBefore    int               `json:"context_before"`
+	ContextAfter     int               `json:"context_after"`
 }
 
 func DefaultConfig() Config {
-	return Config{Version: 1, Theme: "system", FontSize: 14, Wrap: true, DetailHeight: 180, Columns: []string{"time", "pid", "tid", "tag", "package"}, Favorites: map[string]string{}, SaveShellHistory: false, CacheCount: 200000, CacheBytes: 64 << 20, SegmentBytes: 100 << 20, QuotaBytes: 2 << 30, Shortcuts: map[string]string{}}
+	return Config{Version: 1, Theme: "system", FontSize: 14, Wrap: true, DetailHeight: 180, Columns: []string{"time", "pid", "tid", "tag", "package"}, Favorites: map[string]string{}, SaveShellHistory: false, CacheCount: 200000, CacheBytes: 64 << 20, SegmentBytes: 100 << 20, QuotaBytes: 2 << 30, Shortcuts: map[string]string{}, ContextBefore: 20, ContextAfter: 20}
 }
 func ConfigPath() (string, error) {
 	dir, err := os.UserConfigDir()
@@ -104,6 +106,8 @@ func LoadConfig() (Config, error) {
 	if c.Theme != "dark" && c.Theme != "light" && c.Theme != "system" {
 		c.Theme = "system"
 	}
+	c.ContextBefore = max(0, min(c.ContextBefore, 500))
+	c.ContextAfter = max(0, min(c.ContextAfter, 500))
 	return c, nil
 }
 func SaveConfig(c Config) error {

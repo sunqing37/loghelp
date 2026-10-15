@@ -300,49 +300,6 @@ func (w *app) selectLog(p *page, index int) {
 	p.detailScroll = 0
 	p.detailX = 0
 }
-func (w *app) context() {
-	p := w.active()
-	if p == nil || p.selected < 0 || p.selected >= len(p.result.Rows) {
-		return
-	}
-	seq := p.result.Rows[p.selected].Seq
-	lastSeq := p.rowLastSeq(p.selected)
-	source, collector := p.offline, p.collector
-	fallback := p.stopped
-	go func() {
-		var rows []*core.Entry
-		var err error
-		if source != nil {
-			rows, err = source.Context(w.ctx, seq, 20, int(lastSeq-seq)+20)
-		} else {
-			if collector != nil {
-				fallback, _, _ = collector.Ring.Snapshot()
-			}
-			for _, e := range fallback {
-				delta := int64(e.Seq) - int64(seq)
-				if delta >= -20 && delta <= int64(lastSeq-seq)+20 {
-					rows = append(rows, e)
-				}
-			}
-		}
-		w.post(func() {
-			if p.dead {
-				return
-			}
-			if err != nil {
-				w.message("上下文", err.Error())
-				return
-			}
-			content := w.column()
-			for _, e := range rows {
-				label := w.label(e.Raw)
-				label.MaxWidth = float64(w.px(850))
-				content.AddChild(label)
-			}
-			w.show("未过滤上下文 · 前后 20 条", content)
-		})
-	}()
-}
 func (w *app) jumpTime() {
 	p := w.active()
 	if p == nil {

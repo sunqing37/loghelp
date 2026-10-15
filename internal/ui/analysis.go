@@ -74,3 +74,7 @@ func (w *app) showAnalysisProgress(p *page, ctx context.Context, job uint64, tit
 		return true
 	}
 }
+
+func (w *app) contextCountInput(label string, value int) *boundedInput {
+	return w.input(fmt.Sprint(value), label+" 0–500", nil, nil)
+}

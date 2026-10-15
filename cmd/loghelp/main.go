@@ -35,11 +35,28 @@ func main() {
 		}
 		return
 	}
-	stopDiagnostics := diagnostics.StartMemory()
-	defer stopDiagnostics()
-	if err := ui.Run(); err != nil {
+	if err := runApplication(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func runApplication() error {
+	instance, err := core.StartAppInstance()
+	if err != nil {
+		return err
+	}
+	if instance == nil {
+		fmt.Fprintln(os.Stdout, "LogHelp 已在运行，已通知现有窗口。")
+		return nil
+	}
+	defer func() {
+		if err := instance.Close(); err != nil {
+			log.Printf("释放应用实例锁失败：%v", err)
+		}
+	}()
+	stopDiagnostics := diagnostics.StartMemory()
+	defer stopDiagnostics()
+	return ui.Run(instance.Activations())
 }
 
 // Release queries are read-only diagnostics for manual release verification.

@@ -127,7 +127,7 @@ type app struct {
 	lastMouseX, lastMouseY                                        int
 }
 
-func Run() error {
+func Run(activations <-chan struct{}) error {
 	config, configErr := core.LoadConfig()
 	deviceDiagnostic := os.Getenv("LOGHELP_PROFILE_DIR") != "" && os.Getenv("LOGHELP_PROFILE_SCENE") == "device-preview"
 	if deviceDiagnostic {
@@ -135,6 +135,25 @@ func Run() error {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	w := &app{config: config, ctx: ctx, cancel: cancel, tasks: make(chan func(), 128), displayScale: monitorScale(), configWritable: configErr == nil}
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case _, open := <-activations:
+				if !open {
+					return
+				}
+				w.post(func() {
+					if ebiten.IsWindowMinimized() {
+						ebiten.RestoreWindow()
+					}
+					ebiten.RequestAttention()
+					w.renderDirty = true
+				})
+			}
+		}
+	}()
 	w.systemColorMode = ebiten.SystemColorMode()
 	w.detectedSystemColorMode = w.systemColorMode
 	if deviceDiagnostic {

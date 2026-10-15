@@ -21,6 +21,7 @@ type TabState struct {
 	MergeLines    bool   `json:"merge_lines,omitempty"`
 }
 type Config struct {
+	Bookmarks        []Bookmark        `json:"bookmarks,omitempty"`
 	Version          int               `json:"version"`
 	ADB              string            `json:"adb,omitempty"`
 	UpdateProxy      string            `json:"update_proxy,omitempty"`

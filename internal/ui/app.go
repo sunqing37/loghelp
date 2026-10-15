@@ -892,6 +892,10 @@ func (w *app) openOffline(p *page, path string) {
 }
 
 func (w *app) openOfflineAt(p *page, path string, target *core.Entry) {
+	w.openOfflineTarget(p, path, target, nil)
+}
+
+func (w *app) openOfflineTarget(p *page, path string, target *core.Entry, bookmark *core.Bookmark) {
 	w.stop(p)
 	p.state.File = path
 	p.offline = nil
@@ -911,6 +915,9 @@ func (w *app) openOfflineAt(p *page, path string, target *core.Entry) {
 		if err == nil && target != nil {
 			seq, locateErr = source.FindRecorded(ctx, target, progress)
 		}
+		if err == nil && bookmark != nil {
+			seq, locateErr = source.FindBookmark(ctx, *bookmark, progress)
+		}
 		w.post(func() {
 			if p.dead || job != p.job || ctx.Err() != nil {
 				return
@@ -929,7 +936,7 @@ func (w *app) openOfflineAt(p *page, path string, target *core.Entry) {
 			}
 			p.follow = false
 			p.scroll = 0
-			p.selectFirst = true
+			p.selectFirst = locateErr == nil
 			w.refresh(p, true)
 			if p == w.active() {
 				w.rebuild()

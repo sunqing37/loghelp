@@ -11,7 +11,7 @@ import (
 	"loghelp/internal/core"
 )
 
-var defaultShortcuts = map[string]string{"find": "Mod+F", "filter": "Mod+L", "new": "Mod+T", "close": "Mod+W", "next-tab": "Ctrl+Tab", "previous-tab": "Ctrl+Shift+Tab", "next-match": "F3", "previous-match": "Shift+F3", "pause": "Mod+Shift+P", "end": "Mod+End"}
+var defaultShortcuts = map[string]string{"find": "Mod+F", "filter": "Mod+L", "new": "Mod+T", "close": "Mod+W", "next-tab": "Ctrl+Tab", "previous-tab": "Ctrl+Shift+Tab", "next-match": "F3", "previous-match": "Shift+F3", "pause": "Mod+Shift+P", "end": "Mod+End", "bookmark": "Mod+B"}
 
 func modifierDown(name string) bool {
 	switch strings.ToLower(name) {
@@ -127,6 +127,10 @@ func (w *app) keyboard() {
 		return
 	}
 	if w.logKeys(p) {
+		return
+	}
+	if p.shell == nil && !w.ui.HasFocus() && w.shortcut("bookmark") {
+		w.addBookmark()
 		return
 	}
 	if w.shortcut("find") && p.shell == nil {

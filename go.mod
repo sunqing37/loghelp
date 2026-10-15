@@ -6,9 +6,11 @@ require (
 	github.com/atotto/clipboard v0.1.4
 	github.com/ebitengine/purego v0.11.0
 	github.com/ebitenui/ebitenui v0.7.3
+	github.com/gorilla/websocket v1.5.3
 	github.com/hajimehoshi/ebiten/v2 v2.10.5
 	github.com/hinshun/vt10x v0.0.0-20220301184237-5011da428d02
 	github.com/ncruces/zenity v0.10.15
+	github.com/yuin/goldmark v1.8.2
 	golang.org/x/image v0.45.0
 	golang.org/x/sys v0.47.0
 )

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/mail"
 	"net/url"
 	"runtime"
 	"strconv"
@@ -162,4 +163,22 @@ func OpenReleaseURL(raw string) error {
 		return fmt.Errorf("无效的发布链接")
 	}
 	return openReleaseURL(raw)
+}
+
+// OpenReleaseNotesURL opens documentation links in Markdown release notes.
+// Keep this separate from the restricted URLs used for release assets.
+func OpenReleaseNotesURL(raw string) error {
+	parsed, err := url.Parse(raw)
+	if err == nil && parsed.Scheme == "mailto" && parsed.Opaque != "" && parsed.RawQuery == "" && parsed.Fragment == "" {
+		address, decodeErr := url.PathUnescape(parsed.Opaque)
+		if decodeErr == nil {
+			if mailbox, parseErr := mail.ParseAddress(address); parseErr == nil && mailbox.Address == address {
+				return openReleaseURL(parsed.String())
+			}
+		}
+	}
+	if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Hostname() == "" || parsed.User != nil {
+		return fmt.Errorf("无效的说明链接")
+	}
+	return openReleaseURL(parsed.String())
 }

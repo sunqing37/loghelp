@@ -73,13 +73,10 @@ func (w *app) updateSection(proxy string) (*widget.Container, func()) {
 	status.MaxWidth = float64(w.px(580))
 	status.GetWidget().MinHeight = w.px(42)
 	status.SetPosition(&widget.TextPositioning{HTextPosition: widget.TextPositionStart, VTextPosition: widget.TextPositionStart})
-	notes := w.label("检查完成后将在这里显示发布说明。")
-	notes.MaxWidth = float64(w.px(560))
-	notes.SetPosition(&widget.TextPositioning{HTextPosition: widget.TextPositionStart, VTextPosition: widget.TextPositionStart})
-	notesContent := w.column(notes)
-	notesScroll := w.scrollBox(notesContent, w.px(170))
+	var notes *markdownView
+	var notesScroll *widget.ScrollContainer
 	relayout := func(owner *widget.Window) {
-		notesContent.RequestRelayout()
+		notes.RequestRelayout()
 		if content != nil {
 			content.RequestRelayout()
 		}
@@ -87,10 +84,10 @@ func (w *app) updateSection(proxy string) (*widget.Container, func()) {
 		w.renderDirty = true
 	}
 	latest := core.ReleaseUpdate{ReleaseURL: core.LatestReleaseURL, DownloadURL: core.LatestReleaseURL}
-	openLink := func(raw string) {
+	openURL := func(raw string, opener func(string) error) {
 		owner := w.modalWindow
 		go func() {
-			if err := core.OpenReleaseURL(raw); err != nil {
+			if err := opener(raw); err != nil {
 				w.post(func() {
 					if w.modalWindow == owner {
 						status.Label = "打开链接失败：" + err.Error()
@@ -99,6 +96,16 @@ func (w *app) updateSection(proxy string) (*widget.Container, func()) {
 				})
 			}
 		}()
+	}
+	openLink := func(raw string) { openURL(raw, core.OpenReleaseURL) }
+	notes = w.markdown(func(raw string) { openURL(raw, core.OpenReleaseNotesURL) })
+	notes.setPlain("检查完成后将在这里显示发布说明。")
+	notesScroll = w.scrollBox(notes, w.px(170))
+	notes.viewport = notesScroll.ViewRect
+	notes.scrollTo = func(y float64) {
+		_, height := notes.PreferredSize()
+		notesScroll.ScrollTop = markdownScrollPosition(y, height, notesScroll.ViewRect().Dy())
+		w.renderDirty = true
 	}
 	releaseButton := w.action("发布说明", "quiet", func() { openLink(latest.ReleaseURL) })
 	updateButton := w.action("下载更新并重启", "primary", func() {
@@ -125,8 +132,9 @@ func (w *app) updateSection(proxy string) (*widget.Container, func()) {
 		releaseButton.GetWidget().Disabled = true
 		updateButton.GetWidget().Disabled = true
 		status.Label = "正在检查更新…"
-		notes.Label = "正在获取发布说明…"
+		notes.setPlain("正在获取发布说明…")
 		notesScroll.ScrollTop = 0
+		notesScroll.ScrollLeft = 0
 		relayout(owner)
 		go func() {
 			defer cancel()
@@ -147,7 +155,7 @@ func (w *app) updateSection(proxy string) (*widget.Container, func()) {
 				checkButton.GetWidget().Disabled = false
 				if err != nil {
 					status.Label = "检查失败，可重新检查或打开发布页手动下载"
-					notes.Label = err.Error() + "\n\n可关闭弹窗调整更新代理，或点击下方按钮用浏览器打开发布页。"
+					notes.setPlain(err.Error() + "\n\n可关闭弹窗调整更新代理，或点击下方按钮用浏览器打开发布页。")
 				} else {
 					latest = result
 					if result.Newer {
@@ -159,11 +167,11 @@ func (w *app) updateSection(proxy string) (*widget.Container, func()) {
 					}
 					releaseButton.GetWidget().Disabled = false
 					updateButton.GetWidget().Disabled = !result.Newer || !core.AutomaticUpdateSupported() || !result.DownloadAvailable || result.Digest == ""
-					summary := []rune(strings.TrimSpace(result.Notes))
-					if len(summary) > 2000 {
-						summary = append(summary[:2000], []rune("\n…完整内容请打开发布说明。")...)
+					body := strings.TrimSpace(result.Notes)
+					if body == "" {
+						body = strings.TrimSpace(result.Name)
 					}
-					notes.Label = strings.TrimSpace(result.Name + "\n" + string(summary))
+					notes.setMarkdown(body, result.ReleaseURL)
 				}
 				relayout(owner)
 			})

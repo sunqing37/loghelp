@@ -408,3 +408,21 @@ Windows/macOS/Linux × amd64/arm64 六种模块编译均通过，CGO=0；最终�
 本次没有新增或运行自动化测试，未启动 GUI、结束用户进程或操作设备；复用此前的六平台模块编译和只读更新网络诊断结果。代理模式切换与保存、错误/重试弹窗、浏览器手动下载入口、跟随系统与固定主题及输入/草稿保留，待用户手动验收。构建后仅追加本记录，未修改源码或重复构建；未提交、推送或发布。
 
 用户随后确认本次 EXE 验收通过并授权提交。提交前只静态核对变更范围、空白、源码指纹及 EXE 哈希；未改源码或重复构建，未推送或发布。
+
+## 2026-10-15：扩展 Markdown 发布说明与原生兜底
+
+版本更新弹窗取消 2000 字截断和发布名称的重复拼接，说明区域独立滚动。首选独立后台 Chromium 排版，内嵌固定版本的 Markdown-it、扩展插件、Highlight.js、KaTeX、Mermaid、DOMPurify、字体和许可证；无需运行时 Node/npm 或 CDN。表格、任务列表、脚注/返回、标题锚点、提示块、Emoji、折叠、HTML 换行/表格、代码高亮及常见文档扩展按 `docs/markdown.md` 的清单支持，未做全部规范一致性认证。
+
+每次使用隔离浏览器配置，完成后退出；关闭/重新检查取消任务，异步交付核对弹窗与代次。文档 HTML 清理后显示，网页/邮箱链接继续检查协议，更新附件的严格 URL 限制不变。CPU 后台解码 PNG 分片，GPU 仅保留相邻分片，折叠重排保留滚动像素位置；构建脚本校验内嵌资源对应源码并把 ZIP 纳入指纹。
+
+浏览器缺失、启动/排版/解码失败或超时时，后台用 Goldmark 1.8.2 解析并改用纯 Go 原生排版。保留标题、列表、强调、代码、链接、任务状态、删除线、定义列表、脚注和 GFM 表格，表格支持边框、换行、对齐及相应链接命中。公式保留 TeX 字面量，Mermaid/math 和 HTML 显示源码，图片显示替代文字；不支持原生公式绘制、图表绘制、HTML 折叠和语法高亮。顶部显示降级原因，下次检查重新尝试浏览器。
+
+此前用户授权的迭代构建及人工预览已完成：真实 0.0.2 发布说明三列表格正常显示；任务状态、Emoji、NOTE、三种公式、中文 Mermaid 节点、代码高亮、脚注、定义列表和文字扩展可见。深色 100% 为 `artifacts/markdown-table.png`、`markdown-extensions.png`；浅色 150% 为 `markdown-table-light-dpi.png`、`markdown-extensions-light-dpi.png`，后者人工核对了列左/中/右对齐与 details 展开。预览期间修复了 Markdown-it 插件兼容、KaTeX 样式丢失、Mermaid 标签丢失及异步取消判断问题。
+
+此前在隔离配置、无设备连接下启动应用 updates 场景，真实 API 结果的标题、代码、链接显示成功，`artifacts/markdown-app/workspace.png` 已人工查看，进程正常退出、stderr 为空。无效 LOGHELP_MARKDOWN_BROWSER 触发原生兜底，`artifacts/markdown-native-app/workspace.png` 及 `artifacts/instance-native/workspace.png` 已人工核对切换原因、标题、正文和代码。未更改用户真实配置或停止用户窗口。
+
+本次 review 补充图像分片回调的弹窗归属、渲染代次及退出检查，丢弃旧任务；损坏分片切换原生时同步刷新弹窗布局。未改变脚本或浏览器资源，ZIP SHA-256 仍为 `cf1360eb31a7604c21e5736d7e85b7dc70f7f0331f8dd6782b76212c7a26425c`。
+
+审查修复后的完整工作区于 2026-10-15 10:30:53（北京时间）执行一次 Windows/amd64 桌面构建成功，CGO=0；`bin/loghelp.exe` 为 33,798,144 字节，SHA-256：`500269e3bd8f40b84a6899ea3cf1d06c31250cff6f84a85eaaefa14d16fc333d`，版本 `LogHelp 0.0.2 r0`。Linux amd64/arm64、macOS amd64/arm64、Windows arm64 最小模块编译串行通过。构建基于审查时完整工作区；提交拆分后不重复构建。
+
+未新增或运行自动化测试。本次回调边界修复完成编译和静态检查，未声称复现了关闭与解码竞态。长内容分片重入、链接/脚注点击、折叠重排、快速重新检查/关闭、原生表格滚动/点击、公式源码、超时/损坏图像、远程图片失败及更多 Mermaid 图类型仍待实际交互复验。macOS/Linux/Windows arm64 未做对应系统运行验收。

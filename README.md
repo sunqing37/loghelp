@@ -153,6 +153,10 @@ after:"2026-10-12 10:00:00" before:"2026-10-12 11:00:00"
 
 终端断线后需手动重连，不重放命令。终端直接键入不逐键持久化；可选历史只记录命令输入栏明确提交的命令，默认关闭。Windows/Linux 终端复制粘贴用 `Ctrl+Shift+C/V`，macOS 用 `Command+C/V`。
 
+## 发布说明排版
+
+版本更新弹窗支持 CommonMark/GFM、表格、脚注、提示块、代码高亮、KaTeX 数学公式及 Mermaid 图表。首选系统 Edge/Chrome/Chromium，渲染库和字体离线内嵌；浏览器不可用或排版失败时自动使用原生排版，保留表格、文字和链接，公式/图表显示源码。详细语法、运行依赖及边界见 [Markdown 说明](docs/markdown.md)。
+
 ## 本地内存剖析
 
 默认不启用诊断。需要分析时，在启动前设置 `LOGHELP_PROFILE_DIR` 为独立的本地目录：

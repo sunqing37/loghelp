@@ -483,6 +483,7 @@ func (w *app) scrollBox(content widget.PreferredSizeLocateableWidget, height int
 }
 func (w *app) show(title string, content *widget.Container) { w.showDialog(title, content, nil) }
 func (w *app) showDialog(title string, content *widget.Container, primary *widget.Button) {
+	w.cancelListRefresh()
 	w.cancelAnalysis()
 	w.cancelUpdateCheck()
 	w.cancelWirelessOperation()
@@ -530,6 +531,7 @@ func (w *app) showDialog(title string, content *widget.Container, primary *widge
 	w.removeModal = w.ui.AddWindow(window)
 }
 func (w *app) closeModal() {
+	w.cancelListRefresh()
 	w.cancelAnalysis()
 	w.cancelUpdateCheck()
 	w.cancelWirelessOperation()
@@ -620,21 +622,14 @@ func (w *app) fieldHints() {
 	})
 }
 func (w *app) chooseDevice() {
-	var labels []string
-	mapping := map[string]core.Device{}
-	for _, d := range w.devices {
-		label := fmt.Sprintf("%s · %s · %s · %s", d.Name, d.Serial, d.State, d.Connection)
-		labels = append(labels, label)
-		mapping[label] = d
-	}
-	w.choices("设备", labels, func(label string) {
-		d := mapping[label]
+	w.syncInputs()
+	w.deviceChoices("设备", "未发现设备。连接 USB 或 Wi-Fi 设备后点击刷新。", nil, func(d core.Device) {
 		if d.State != "device" {
 			w.message("设备不可用", "设备状态："+d.State+"；检查授权及连接。")
 			return
 		}
 		p := w.active()
-		if p != nil {
+		if p != nil && p.shell == nil && w.serialInput != nil {
 			w.stop(p)
 			p.state.Serial = d.Serial
 			w.serialInput.SetText(d.Serial)
@@ -654,21 +649,25 @@ func (w *app) chooseApp() {
 		w.message("应用列表", "先选择在线设备。")
 		return
 	}
-	w.async(func() error {
-		ctx, cancel := context.WithTimeout(w.ctx, 15*time.Second)
-		defer cancel()
+	w.refreshableChoices("选择完整包名", "未发现应用，可刷新重试。", func(ctx context.Context) ([]refreshChoice, error) {
 		packages, err := client.Packages(ctx, serial)
-		if err == nil {
-			w.post(func() {
-				w.choices("选择完整包名", append([]string{"全部应用"}, packages...), func(pkg string) {
-					if pkg == "全部应用" {
-						pkg = ""
-					}
+		if err != nil {
+			return nil, err
+		}
+		var result []refreshChoice
+		for _, pkg := range append([]string{""}, packages...) {
+			pkg := pkg
+			label := pkg
+			if label == "" {
+				label = "全部应用"
+			}
+			result = append(result, refreshChoice{label: label, choose: func() {
+				if !p.dead && w.active() == p && w.client == client && p.state.Serial == serial {
 					w.appInput.SetText(pkg)
 					w.apply(p)
-				})
-			})
+				}
+			}})
 		}
-		return err
-	}, nil)
+		return result, nil
+	})
 }

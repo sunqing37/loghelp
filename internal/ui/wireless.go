@@ -2,7 +2,6 @@ package ui
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
@@ -59,6 +58,7 @@ func (w *app) wirelessDevices() {
 	w.syncInputs()
 	w.show("Wi-Fi 设备", w.column(
 		w.label("手机与电脑需连接同一可互访的 Wi-Fi 网络。"),
+		w.button("查看 / 刷新设备列表", w.chooseDevice),
 		w.button("地址直连 / 重新连接", func() { w.wirelessForm("connect", "") }),
 		w.muted("已配对或已开启 TCP 调试的设备，输入 IP:连接端口。"),
 		w.button("Android 11+ 扫码配对", w.wirelessQR),
@@ -73,37 +73,15 @@ func (w *app) wirelessDevices() {
 }
 
 func (w *app) chooseWirelessUSB() {
-	var labels []string
-	serials := map[string]string{}
-	for _, d := range w.devices {
-		if d.State == "device" && d.Connection == "USB" {
-			label := d.Name + " · " + d.Serial
-			labels = append(labels, label)
-			serials[label] = d.Serial
-		}
-	}
-	if len(labels) == 0 {
-		w.message("USB 切换 Wi-Fi", "未发现在线 USB 真机，请连接数据线并在手机上允许 USB 调试，等待设备列表刷新后重试。")
-		return
-	}
-	w.choices("选择要切换的 USB 真机", labels, func(label string) { w.wirelessForm("usb", serials[label]) })
+	w.deviceChoices("选择要切换的 USB 真机", "未发现在线 USB 真机。连接数据线并允许 USB 调试后点击刷新。",
+		func(d core.Device) bool { return d.State == "device" && d.Connection == "USB" },
+		func(d core.Device) { w.wirelessForm("usb", d.Serial) })
 }
 
 func (w *app) chooseWirelessDisconnect() {
-	var labels []string
-	serials := map[string]string{}
-	for _, d := range w.devices {
-		if d.Connection == "Wi-Fi" {
-			label := fmt.Sprintf("%s · %s · %s", d.Name, d.Serial, d.State)
-			labels = append(labels, label)
-			serials[label] = d.Serial
-		}
-	}
-	if len(labels) == 0 {
-		w.message("断开无线设备", "当前没有无线设备连接。")
-		return
-	}
-	w.choices("选择要断开的无线设备", labels, func(label string) { w.wirelessForm("disconnect", serials[label]) })
+	w.deviceChoices("选择要断开的无线设备", "当前没有无线设备连接。连接后点击刷新。",
+		func(d core.Device) bool { return d.Connection == "Wi-Fi" },
+		func(d core.Device) { w.wirelessForm("disconnect", d.Serial) })
 }
 
 func (w *app) wirelessForm(mode, serial string) {

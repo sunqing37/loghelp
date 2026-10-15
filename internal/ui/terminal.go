@@ -48,13 +48,8 @@ func (w *app) openTerminal() {
 		w.settings()
 		return
 	}
-	var choices []string
-	for _, d := range w.devices {
-		if d.State == "device" {
-			choices = append(choices, d.Serial)
-		}
-	}
-	w.choices("终端固定设备", choices, func(serial string) {
+	w.deviceChoices("终端固定设备", "没有在线设备。连接并授权后点击刷新。", func(d core.Device) bool { return d.State == "device" }, func(d core.Device) {
+		serial := d.Serial
 		w.syncInputs()
 		p := w.newPage(core.TabState{Name: "Shell · " + serial, Serial: serial})
 		p.shell = &shellState{cols: 80, rows: 24, vt: vt10x.New(vt10x.WithSize(80, 24))}

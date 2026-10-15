@@ -88,11 +88,11 @@ type app struct {
 	tabDrag                                                       tabDragState
 	devices                                                       []core.Device
 	wirelessCancel                                                context.CancelFunc
+	listCancel                                                    context.CancelFunc
 	wirelessCleanup                                               func()
 	preview                                                       *devicePreview
 	previewStreams                                                []*core.ScreenStream
 	profileDeviceCopyDone                                         bool
-	previewDeviceRequest                                          uint64
 	face                                                          text.Face
 	uiFace, smallFace, titleFace                                  text.Face
 	fontSource, monoSource                                        *text.GoTextFaceSource
@@ -210,8 +210,13 @@ func Run(activations <-chan struct{}) error {
 	if os.Getenv("LOGHELP_PROFILE_DIR") != "" && os.Getenv("LOGHELP_PROFILE_SCENE") == "device-picker" {
 		// A local sample makes the one-row picker layout inspectable without a device.
 		w.post(func() {
-			w.choices("设备", []string{"Android 设备 · emulator-5554 · device · USB"}, func(string) {})
+			w.refreshableChoices("设备", "没有设备，连接后点击刷新。", func(context.Context) ([]refreshChoice, error) {
+				return []refreshChoice{{label: "Android 设备 · emulator-5554 · device · USB", choose: func() {}}}, nil
+			})
 		})
+	}
+	if w.backgroundDiagnostic && os.Getenv("LOGHELP_PROFILE_SCENE") == "device-picker-live" {
+		w.post(w.chooseDevice)
 	}
 	if w.backgroundDiagnostic && os.Getenv("LOGHELP_PROFILE_SCENE") == "wireless-pair-error" {
 		// Offline layout preview only: no pairing request or credentials.
@@ -447,6 +452,7 @@ func (w *app) shutdown() {
 	w.save()
 	w.cancel()
 	w.cancelWirelessOperation()
+	w.cancelListRefresh()
 	w.disposeDevicePreview()
 	for _, p := range w.pages {
 		if p.cancel != nil {
@@ -615,7 +621,7 @@ func (w *app) profileSnapshotReady() bool {
 	if os.Getenv("LOGHELP_PROFILE_SCENE") == "updates" && (w.profileScene != "版本更新" || w.updateRequests > 0) {
 		return false
 	}
-	if os.Getenv("LOGHELP_PROFILE_SCENE") == "device-picker" && w.profileScene != "设备" {
+	if strings.HasPrefix(os.Getenv("LOGHELP_PROFILE_SCENE"), "device-picker") && (w.profileScene != "设备" || w.listCancel != nil) {
 		return false
 	}
 	p := w.active()

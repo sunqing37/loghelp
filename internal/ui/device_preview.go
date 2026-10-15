@@ -87,41 +87,13 @@ func (w *app) openDevicePreview() {
 }
 
 func (w *app) choosePreviewDevice() {
-	client := w.client
-	if client == nil {
+	if w.client == nil {
 		w.settings()
 		return
 	}
-	w.previewDeviceRequest++
-	request := w.previewDeviceRequest
-	go func() {
-		ctx, cancel := context.WithTimeout(w.ctx, 5*time.Second)
-		defer cancel()
-		devices, err := client.Devices(ctx)
-		w.post(func() {
-			if client != w.client || request != w.previewDeviceRequest {
-				return
-			}
-			if err != nil {
-				w.message("选择预览设备", err.Error())
-				return
-			}
-			labels, serials := []string{}, map[string]string{}
-			for _, d := range devices {
-				if d.State != "device" {
-					continue
-				}
-				label := fmt.Sprintf("%s · %s · %s", d.Name, d.Serial, d.Connection)
-				labels = append(labels, label)
-				serials[label] = d.Serial
-			}
-			if len(labels) == 0 {
-				w.message("选择预览设备", "没有在线设备，请检查 USB／无线连接及调试授权。")
-				return
-			}
-			w.choices("选择预览设备", labels, func(label string) { w.startDevicePreview(serials[label]) })
-		})
-	}()
+	w.deviceChoices("选择预览设备", "没有在线设备。检查 USB / Wi-Fi 连接及授权后点击刷新。",
+		func(d core.Device) bool { return d.State == "device" },
+		func(d core.Device) { w.startDevicePreview(d.Serial) })
 }
 
 func (w *app) cancelDeviceTouch() {
@@ -137,7 +109,6 @@ func (w *app) cancelDeviceTouch() {
 }
 
 func (w *app) disposeDevicePreview() {
-	w.previewDeviceRequest++
 	if d := w.preview; d != nil {
 		w.cancelDeviceTouch()
 		d.cancel()

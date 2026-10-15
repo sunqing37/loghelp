@@ -107,8 +107,10 @@ func (a *ADB) Devices(ctx context.Context) ([]Device, error) {
 			continue
 		}
 		d := Device{Serial: f[0], Name: f[0], State: f[1], Connection: "USB"}
-		if strings.Contains(f[0], ":") {
-			d.Connection = "网络"
+		if strings.HasPrefix(f[0], "emulator-") {
+			d.Connection = "模拟器"
+		} else if strings.Contains(f[0], ":") || strings.Contains(f[0], "._adb-tls-connect._tcp") || strings.Contains(f[0], "._adb._tcp") {
+			d.Connection = "Wi-Fi"
 		}
 		for _, v := range f[2:] {
 			if strings.HasPrefix(v, "model:") {

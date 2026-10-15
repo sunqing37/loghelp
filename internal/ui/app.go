@@ -83,6 +83,8 @@ type app struct {
 	tabScroll                                                     *widget.ScrollContainer
 	tabDrag                                                       tabDragState
 	devices                                                       []core.Device
+	wirelessCancel                                                context.CancelFunc
+	wirelessCleanup                                               func()
 	preview                                                       *devicePreview
 	previewStreams                                                []*core.ScreenStream
 	profileDeviceCopyDone                                         bool
@@ -430,6 +432,7 @@ func (w *app) shutdown() {
 	}
 	w.save()
 	w.cancel()
+	w.cancelWirelessOperation()
 	w.disposeDevicePreview()
 	for _, p := range w.pages {
 		if p.cancel != nil {

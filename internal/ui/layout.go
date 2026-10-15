@@ -256,7 +256,7 @@ func (w *app) sidebar(p *page) *widget.Container {
 			pathLabel.MaxWidth = float64(w.px(192))
 			content.AddChild(name, pathLabel, w.action("重新选择文件", "quiet", func() { w.browse("file", func(path string) { w.openOffline(p, path) }) }), w.muted("应用 / 进程"), w.appInput, w.action("清除应用限制", "quiet", func() { w.appInput.SetText(""); w.apply(p) }), w.muted("分析范围"), w.muted("完整文件 · 分页浏览"), w.row(), w.action("快捷键与帮助", "quiet", w.help))
 		} else {
-			content.AddChild(w.serialInput, w.action("选择设备", "quiet", w.chooseDevice))
+			content.AddChild(w.serialInput, w.row(w.action("选择设备", "quiet", w.chooseDevice), w.action("Wi-Fi", "quiet", w.wirelessDevices)))
 			w.startButton = w.action("开始采集", "primary", func() {
 				if p.collector != nil {
 					w.stop(p)
@@ -468,6 +468,7 @@ func (w *app) scrollBox(content widget.PreferredSizeLocateableWidget, height int
 func (w *app) show(title string, content *widget.Container) { w.showDialog(title, content, nil) }
 func (w *app) showDialog(title string, content *widget.Container, primary *widget.Button) {
 	w.cancelUpdateCheck()
+	w.cancelWirelessOperation()
 	w.profileScene = title
 	if w.removeModal != nil {
 		w.removeModal()
@@ -513,6 +514,7 @@ func (w *app) showDialog(title string, content *widget.Container, primary *widge
 }
 func (w *app) closeModal() {
 	w.cancelUpdateCheck()
+	w.cancelWirelessOperation()
 	back := w.modalReturn
 	w.modalReturn = nil
 	w.profileScene = ""

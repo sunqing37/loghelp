@@ -425,6 +425,23 @@ func (w *app) mouse(p *page) {
 	if w.resizeDetails(x, y) {
 		return
 	}
+	if p.shell == nil && inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight) {
+		if w.detailPanel != nil && image.Pt(x, y).In(w.detailPanel.GetWidget().Rect) {
+			w.quickFilter()
+			return
+		}
+		if image.Pt(x, y).In(w.panelRect()) {
+			index := p.scroll + (y-w.panelRect().Min.Y)/w.rowHeight()
+			if index >= 0 && index < len(p.result.Rows) {
+				p.selectRow(index)
+				p.detailSelection = detailSelection{}
+				p.detailScroll, p.detailX = 0, 0
+				p.follow = false
+				w.quickFilter()
+			}
+			return
+		}
+	}
 	if w.selectDetails(p, x, y) {
 		return
 	}

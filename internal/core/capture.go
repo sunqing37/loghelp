@@ -13,23 +13,27 @@ import (
 )
 
 type Collector struct {
-	ADB        *ADB
-	Serial     string
-	Buffers    []string
-	Ring       *Ring
-	mu         sync.RWMutex
-	status     string
-	processes  map[int]Process
-	packages   map[string]bool
-	clockSkew  time.Duration
-	info       map[string]string
-	starting   bool
-	ready      bool
-	generation uint64
-	refs       int
-	Recorder   *Recorder
-	cancel     context.CancelFunc
-	done       chan struct{}
+	ADB           *ADB
+	Serial        string
+	Buffers       []string
+	Ring          *Ring
+	mu            sync.RWMutex
+	emitMu        sync.Mutex
+	status        string
+	processes     map[int]Process
+	packages      map[string]bool
+	clockSkew     time.Duration
+	info          map[string]string
+	starting      bool
+	ready         bool
+	generation    uint64
+	refs          int
+	Recorder      *Recorder
+	recordings    []string
+	keepRecording bool
+	recordJob     uint64
+	cancel        context.CancelFunc
+	done          chan struct{}
 }
 type Hub struct {
 	mu     sync.Mutex
@@ -73,7 +77,7 @@ func (h *Hub) prune(c *Collector) {
 	if h.items[captureKey(c.Serial, c.Buffers)] != c {
 		return
 	}
-	if c.refs == 0 && !c.IsRecording() {
+	if c.refs == 0 && !c.retainRecording() {
 		delete(h.items, captureKey(c.Serial, c.Buffers))
 		c.cancel()
 	}
@@ -89,12 +93,28 @@ func (h *Hub) Items() []*Collector {
 	return out
 }
 func (h *Hub) StartRecording(c *Collector, options RecordOptions) error {
+	return h.startRecording(c, options, "")
+}
+
+func (h *Hub) RecoverRecording(c *Collector, options RecordOptions, failedDirectory string) error {
+	if failedDirectory == "" {
+		return fmt.Errorf("没有可恢复的故障录制")
+	}
+	return h.startRecording(c, options, failedDirectory)
+}
+
+func (h *Hub) startRecording(c *Collector, options RecordOptions, failedDirectory string) error {
 	h.mu.Lock()
 	if h.items[captureKey(c.Serial, c.Buffers)] != c {
 		h.mu.Unlock()
 		return fmt.Errorf("采集流已关闭，请重新开始采集后录制")
 	}
 	c.mu.Lock()
+	if failedDirectory != "" && (c.Recorder == nil || c.Recorder.Status().Directory != failedDirectory || c.Recorder.Status().Error == "") {
+		c.mu.Unlock()
+		h.mu.Unlock()
+		return fmt.Errorf("故障录制已改变，请刷新录制管理后重试")
+	}
 	if !c.ready {
 		c.mu.Unlock()
 		h.mu.Unlock()
@@ -106,26 +126,53 @@ func (h *Hub) StartRecording(c *Collector, options RecordOptions) error {
 		return fmt.Errorf("该采集流已经在录制")
 	}
 	c.starting = true
+	c.recordJob++
+	job := c.recordJob
 	c.refs++
+	previous := c.Recorder
 	options.DeviceInfo = make(map[string]string, len(c.info))
 	for key, value := range c.info {
 		options.DeviceInfo[key] = value
 	}
 	c.mu.Unlock()
 	h.mu.Unlock()
+	// A failed writer may still be flushing its bounded queue. Wait for its
+	// final durable boundary before creating the replacement in another root.
+	if previous != nil {
+		_ = previous.Stop() // The old fault is preserved below, not a new failure.
+		status := previous.Status()
+		if status.Error != "" {
+			options.Recovery = &RecordingRecovery{PreviousDirectory: status.Directory, LastSeq: status.LastSeq, Unwritten: status.Unwritten, LastReceived: status.LastReceived, FailedAt: status.FailedAt, Reason: status.Error}
+		}
+	}
 	r, err := NewRecorder(c.Serial, c.Buffers, options)
 	h.mu.Lock()
+	c.emitMu.Lock()
 	c.mu.Lock()
 	c.starting = false
 	c.refs--
-	valid := h.items[captureKey(c.Serial, c.Buffers)] == c
+	valid := h.items[captureKey(c.Serial, c.Buffers)] == c && c.recordJob == job
 	if err == nil && valid {
 		c.Recorder = r
+		c.keepRecording = true
+		c.recordings = append(c.recordings, r.Status().Directory)
+		if len(c.recordings) > 64 {
+			c.recordings = append([]string(nil), c.recordings[len(c.recordings)-64:]...)
+		}
 	}
 	c.mu.Unlock()
-	if valid {
-		h.prune(c)
+	if err == nil && valid && options.Recovery != nil {
+		now := time.Now()
+		message := fmt.Sprintf("录制恢复边界：上一会话 %s，最后持久化序号 %d；从本条之后继续写入，期间日志未回填，可能存在缺口。", options.Recovery.PreviousDirectory, options.Recovery.LastSeq)
+		c.mu.RLock()
+		generation := c.generation
+		c.mu.RUnlock()
+		entry := &Entry{Time: now, Received: now, Serial: c.Serial, Buffer: strings.Join(c.Buffers, ","), Generation: generation, Event: true, Level: "W", Tag: "LogHelp", Raw: message, Message: message}
+		c.Ring.Add(entry)
+		r.Append(entry)
 	}
+	c.emitMu.Unlock()
+	h.prune(c)
 	h.mu.Unlock()
 	if !valid && r != nil {
 		r.Stop()
@@ -136,9 +183,11 @@ func (h *Hub) StartRecording(c *Collector, options RecordOptions) error {
 
 func (h *Hub) UpdateConfig(config Config) { h.mu.Lock(); h.Config = config; h.mu.Unlock() }
 func (h *Hub) StopRecording(c *Collector) error {
-	c.mu.RLock()
+	c.mu.Lock()
 	r := c.Recorder
-	c.mu.RUnlock()
+	c.keepRecording = false
+	c.recordJob++
+	c.mu.Unlock()
 	var err error
 	if r != nil {
 		err = r.Stop()
@@ -173,6 +222,24 @@ func (c *Collector) IsRecording() bool {
 	c.mu.RUnlock()
 	return r != nil && r.Status().Active
 }
+func (c *Collector) retainRecording() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.starting {
+		return true
+	}
+	if c.Recorder == nil {
+		return false
+	}
+	status := c.Recorder.Status()
+	return status.Active || c.keepRecording && status.Error != ""
+}
+
+func (c *Collector) RecordingDirectories() []string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return append([]string(nil), c.recordings...)
+}
 func (c *Collector) RecordingStatus() RecordStatus {
 	c.mu.RLock()
 	r := c.Recorder
@@ -191,6 +258,8 @@ func (c *Collector) PauseRecording(pause bool) {
 	}
 }
 func (c *Collector) emit(e *Entry) {
+	c.emitMu.Lock()
+	defer c.emitMu.Unlock()
 	e.Serial = c.Serial
 	e.Buffer = strings.Join(c.Buffers, ",")
 	c.mu.RLock()

@@ -134,6 +134,10 @@ func (w *app) record() {
 		w.recordings()
 		return
 	}
+	if p.collector.RecordingStatus().Error != "" {
+		w.recoverRecording(p.collector, p.hub)
+		return
+	}
 	start := func() {
 		collector, hub, options := p.collector, p.hub, core.OptionsFromConfig(w.config)
 		w.async(func() error { return hub.StartRecording(collector, options) }, func() { p.status = "已开始录制完整采集流" })
@@ -152,9 +156,23 @@ func (w *app) recordings() {
 		if status.Directory == "" {
 			continue
 		}
-		label := w.label(fmt.Sprintf("%s\n%s\n%d MiB · 持久化序号 %d · 未写入 %d · %s", collector.Serial, status.Directory, status.Bytes>>20, status.LastSeq, status.Unwritten, status.Error))
+		state := "已停止"
+		if status.Active {
+			state = "录制中"
+		}
+		if status.Paused && status.Active {
+			state = "已暂停"
+		}
+		if status.Error != "" {
+			state = "录制故障"
+		}
+		label := w.label(fmt.Sprintf("%s · %s\n%s\n%d MiB · 持久化序号 %d · 已确认未写入 %d · %s", collector.Serial, state, status.Directory, status.Bytes>>20, status.LastSeq, status.Unwritten, status.Error))
 		label.MaxWidth = float64(w.px(850))
-		box.AddChild(label, w.row(w.button("暂停/继续", func() { collector.PauseRecording(!collector.RecordingStatus().Paused) }), w.button("停止录制", func() { w.async(func() error { return w.hub.StopRecording(collector) }, func() { w.recordings() }) }), w.button("离线打开", func() {
+		box.AddChild(label)
+		if status.Error != "" && !status.Active {
+			box.AddChild(w.button("选择目录并恢复录制", func() { w.recoverRecording(collector, w.hub) }))
+		}
+		box.AddChild(w.row(w.button("暂停/继续", func() { collector.PauseRecording(!collector.RecordingStatus().Paused) }), w.button("停止录制", func() { w.async(func() error { return w.hub.StopRecording(collector) }, func() { w.recordings() }) }), w.button("离线打开", func() {
 			w.closeModal()
 			w.syncInputs()
 			p := w.newPage(core.TabState{Name: "录制", File: status.Directory})

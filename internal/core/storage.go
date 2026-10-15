@@ -20,27 +20,43 @@ type RecordOptions struct {
 	SegmentMinutes, RetentionDays int
 	Cleanup                       bool
 	DeviceInfo                    map[string]string
+	Recovery                      *RecordingRecovery
+}
+type RecordingRecovery struct {
+	PreviousDirectory string    `json:"previous_directory"`
+	LastSeq           uint64    `json:"last_seq"`
+	Unwritten         uint64    `json:"unwritten"`
+	LastReceived      time.Time `json:"last_received,omitempty"`
+	FailedAt          time.Time `json:"failed_at"`
+	ResumedAt         time.Time `json:"resumed_at"`
+	Reason            string    `json:"reason"`
 }
 type Manifest struct {
-	Format     string            `json:"format"`
-	Version    int               `json:"version"`
-	Serial     string            `json:"serial"`
-	Buffers    []string          `json:"buffers"`
-	Started    time.Time         `json:"started"`
-	Ended      *time.Time        `json:"ended,omitempty"`
-	Timezone   string            `json:"timezone"`
-	Segments   []string          `json:"segments"`
-	Protected  bool              `json:"protected"`
-	Active     bool              `json:"active"`
-	LastSeq    uint64            `json:"last_seq"`
-	Error      string            `json:"error,omitempty"`
-	DeviceInfo map[string]string `json:"device_info,omitempty"`
+	Format       string             `json:"format"`
+	Version      int                `json:"version"`
+	Serial       string             `json:"serial"`
+	Buffers      []string           `json:"buffers"`
+	Started      time.Time          `json:"started"`
+	Ended        *time.Time         `json:"ended,omitempty"`
+	Timezone     string             `json:"timezone"`
+	Segments     []string           `json:"segments"`
+	Protected    bool               `json:"protected"`
+	Active       bool               `json:"active"`
+	LastSeq      uint64             `json:"last_seq"`
+	FirstSeq     uint64             `json:"first_seq,omitempty"`
+	Error        string             `json:"error,omitempty"`
+	DeviceInfo   map[string]string  `json:"device_info,omitempty"`
+	Recovery     *RecordingRecovery `json:"recovery,omitempty"`
+	Unwritten    uint64             `json:"unwritten,omitempty"`
+	LastReceived time.Time          `json:"last_received,omitempty"`
+	FailedAt     time.Time          `json:"failed_at,omitempty"`
 }
 type RecordStatus struct {
-	Active, Paused     bool
-	Directory, Error   string
-	Bytes              int64
-	LastSeq, Unwritten uint64
+	Active, Paused         bool
+	Directory, Error       string
+	Bytes                  int64
+	LastSeq, Unwritten     uint64
+	LastReceived, FailedAt time.Time
 }
 type Recorder struct {
 	mu                       sync.Mutex
@@ -56,6 +72,7 @@ type Recorder struct {
 	segmentBytes, totalBytes int64
 	segmentStarted           time.Time
 	durableSeq               uint64
+	durableReceived          time.Time
 	budget                   *directoryBudget
 }
 
@@ -154,6 +171,11 @@ func NewRecorder(serial string, buffers []string, options RecordOptions) (*Recor
 		return nil, err
 	}
 	r := &Recorder{queue: make(chan *Entry, 4096), done: make(chan struct{}), status: RecordStatus{Active: true, Directory: dir}, options: options, totalBytes: size, manifest: Manifest{Format: "loghelp", Version: 1, Serial: serial, Buffers: buffers, Started: time.Now(), Timezone: time.Now().Location().String(), Active: true, DeviceInfo: options.DeviceInfo}}
+	if options.Recovery != nil {
+		recovery := *options.Recovery
+		recovery.ResumedAt = r.manifest.Started
+		r.manifest.Recovery = &recovery
+	}
 	r.budget, err = acquireBudget(root)
 	if err != nil {
 		return nil, err
@@ -165,6 +187,10 @@ func NewRecorder(serial string, buffers []string, options RecordOptions) (*Recor
 	recordingDirectories.Lock()
 	recordingDirectories.active[dir] = true
 	recordingDirectories.Unlock()
+	if recovery := r.manifest.Recovery; recovery != nil {
+		message := fmt.Sprintf("录制故障恢复：上一会话 %s，最后持久化序号 %d（接收时间 %s），已确认未写入 %d 条；故障 %s，恢复 %s。间隔内日志未回填，可能存在缺口。原因：%s", recovery.PreviousDirectory, recovery.LastSeq, recovery.LastReceived.Format(time.RFC3339Nano), recovery.Unwritten, recovery.FailedAt.Format(time.RFC3339Nano), recovery.ResumedAt.Format(time.RFC3339Nano), recovery.Reason)
+		r.Append(&Entry{Time: recovery.ResumedAt, Received: recovery.ResumedAt, Serial: serial, Event: true, Tag: "LogHelp", Level: "W", Raw: message, Message: message})
+	}
 	go r.run()
 	return r, nil
 }
@@ -187,6 +213,7 @@ func (r *Recorder) flush() error {
 	}
 	r.mu.Lock()
 	r.status.LastSeq = r.durableSeq
+	r.status.LastReceived = r.durableReceived
 	r.mu.Unlock()
 	return nil
 }
@@ -235,6 +262,7 @@ func (r *Recorder) Append(e *Entry) {
 func (r *Recorder) failLocked(message string, lost uint64) {
 	if r.status.Error == "" {
 		r.status.Error = message
+		r.status.FailedAt = time.Now()
 	}
 	r.status.Unwritten += lost
 	r.status.Active = false
@@ -346,7 +374,11 @@ func (r *Recorder) run() {
 				continue
 			}
 			if e.Seq > 0 {
+				if r.manifest.FirstSeq == 0 {
+					r.manifest.FirstSeq = e.Seq
+				}
 				r.durableSeq = e.Seq
+				r.durableReceived = e.Received
 			}
 			r.segmentBytes += int64(len(data))
 			r.totalBytes += int64(len(data))
@@ -380,10 +412,14 @@ finish:
 	status := r.Status()
 	r.manifest.LastSeq = status.LastSeq
 	r.manifest.Error = status.Error
+	r.manifest.Unwritten = status.Unwritten
+	r.manifest.LastReceived = status.LastReceived
+	r.manifest.FailedAt = status.FailedAt
 	if err := r.saveManifest(); err != nil {
 		r.mu.Lock()
 		if r.status.Error == "" {
 			r.status.Error = "保存会话元数据失败：" + err.Error()
+			r.status.FailedAt = time.Now()
 		}
 		r.mu.Unlock()
 	}

@@ -7,6 +7,7 @@
 | 文件 | 适用场景 |
 |---|---|
 | `.agent/README.md` | 了解协作目录或维护规则 |
+| `.agent/skills/loghelp-sync-code/SKILL.md` | 更新、拉取或同步代码；默认 rebase，备份并恢复本地改动，仅执行 Git 同步 |
 | `.agent/project.md` | 定位模块、版本、构建及验收资料 |
 | `.agent/rules/code-guardrails.md` | 修改或审查业务代码、UI、更新功能 |
 | `.agent/skills/loghelp-desktop-features/SKILL.md` | 新增或修改 Go 桌面功能；跨平台、投屏、图片剪贴板及依赖分发 |

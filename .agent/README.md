@@ -14,6 +14,8 @@
 ├── workflows/
 │   └── github-release.md
 ├── skills/
+│   ├── loghelp-sync-code/
+│   │   └── SKILL.md
 │   └── loghelp-desktop-features/
 │       └── SKILL.md
 └── scripts/
@@ -24,6 +26,8 @@
 `rules/` 放短而明确的约束，`workflows/` 放可执行步骤，`scripts/` 放本项目辅助工具。没有实际用途不创建空目录；需要专属工具入口时仅引用根 `AGENTS.md`。
 
 `skills/loghelp-desktop-features/SKILL.md` 维护 Go 桌面功能的跨平台、投屏、图片剪贴板与验证约束；其个人技能安装副本用于自动发现，修改时以本目录版本为准并同步。
+
+`skills/loghelp-sync-code/SKILL.md` 维护代码更新规则：默认 rebase，备份并恢复本地改动，纯同步不触发审查或构建；通过根 `AGENTS.md` 按任务发现。
 
 维护时核对目录索引、入口路由及相关流程，避免路径失效或规则互相矛盾。静态检查文件引用、UTF-8 和 `git diff --check`；不要为文档维护触发应用构建。工具脚本不自动新增或运行测试。
 

@@ -33,6 +33,7 @@ var appVersionLabel = fmt.Sprintf("v%s · r%d", appVersion, appRevision)
 
 type page struct {
 	timeAnchor                                       *timeAnchor
+	pauseSeq, pauseDropped                           uint64
 	state                                            core.TabState
 	collector                                        *core.Collector
 	recordingPaths                                   []string
@@ -100,7 +101,7 @@ type app struct {
 	connectionLabel                                               *widget.Text
 	startButton, followButton, recordButton, pauseButton          *widget.Button
 	copyDetailButton                                              *widget.Button
-	startActive, followActive, recordActive                       bool
+	startActive, followActive, recordActive, pauseActive          bool
 	rowHeader                                                     *widget.Container
 	tableX                                                        int
 	columnDrag                                                    columnResizeState
@@ -670,6 +671,7 @@ func (w *app) start(p *page) {
 	p.offline = nil
 	p.state.File = ""
 	p.paused = false
+	p.pauseSeq, p.pauseDropped = 0, 0
 	p.timeAnchor = nil
 	p.frozen = nil
 	p.stopped = nil
@@ -698,6 +700,9 @@ func (w *app) stop(p *page) {
 		p.hub.Release(p.collector)
 		p.collector = nil
 	}
+	p.paused = false
+	p.frozen = nil
+	p.pauseSeq, p.pauseDropped = 0, 0
 	p.status = "当前页已停止，已有日志仍可查询；后台录制继续"
 }
 func (w *app) apply(p *page) {
@@ -769,6 +774,7 @@ func (w *app) refresh(p *page, force bool) {
 	if collector != nil {
 		if p.paused {
 			entries = p.frozen
+			version, dropped = p.pauseSeq, p.pauseDropped
 		} else {
 			entries, version, dropped = collector.Ring.Snapshot()
 		}
@@ -888,6 +894,9 @@ func (w *app) updateLiveStatus(p *page) {
 		}
 	}
 	result := p.result
+	if p.paused && p.collector != nil {
+		state += fmt.Sprintf(" · 显示已暂停，后台新增 %s 条（全部记录，含事件）", number(int(p.collector.Ring.Version()-p.pauseSeq)))
+	}
 	p.status = fmt.Sprintf("实时缓存 · %d/%d 条 · 搜索 %d 处 · 淘汰 %d · %s", len(p.rawResult.Rows), result.Total, result.SearchCount, result.Dropped, state)
 }
 func (w *app) openOffline(p *page, path string) {

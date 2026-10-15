@@ -87,11 +87,13 @@ func (w *app) pause() {
 	}
 	p.paused = !p.paused
 	if p.paused {
-		p.frozen, _, _ = p.collector.Ring.Snapshot()
+		p.frozen, p.pauseSeq, p.pauseDropped = p.collector.Ring.Snapshot()
 		p.follow = false
 	} else {
 		p.frozen = nil
+		p.pauseSeq, p.pauseDropped = 0, 0
 	}
+	w.syncInputs()
 	w.refresh(p, true)
 	w.rebuild()
 }
@@ -716,7 +718,8 @@ pid/tid 精确数值；age:5m 支持 s/m/h/d。
 after:"2026-10-12 10:00:00" before:"2026-10-12 11:00:00"
 时间起点包含、终点排除；离线 age 相对最后设备时间。
 过滤与搜索分开；字段建议、历史与收藏通过对应按钮。
-暂停显示继续采集写盘；停止单页不停止后台录制。
+暂停显示继续采集写盘，底部显示暂停后全部新增记录数（含事件）。
+停止单页不停止后台录制。恢复或重新暂停后计数重新开始。
 详情“快速过滤”或右键：查找选中文字，包含/排除文字、TAG、PID 等。
 Ctrl/Cmd+B 为选中日志添加书签备注；详情“书签”管理、定位和删除。
 书签保存定位信息，未录制且已淘汰的日志无法恢复。

@@ -163,6 +163,7 @@ func (w *app) rebuild() {
 			followKind = "active"
 		}
 		w.pauseButton = w.action(pause, "quiet", w.pause)
+		w.pauseActive = p.paused
 		w.followButton = w.action("跟随", followKind, func() {
 			p.keepSelectionVisible = false
 			p.follow = !p.follow
@@ -409,6 +410,16 @@ func (w *app) updateChrome() {
 	}
 	if w.pauseButton != nil {
 		w.pauseButton.GetWidget().Disabled = p.collector == nil
+		// Button text is created during widget validation, after rebuild.
+		// Track the state without reading a not-yet-created text widget.
+		if w.pauseActive != p.paused {
+			w.pauseActive = p.paused
+			label := "暂停"
+			if p.paused {
+				label = "继续"
+			}
+			w.pauseButton.SetText(label)
+		}
 	}
 	update(w.logToolsLabel, p.timeDifferenceText())
 	if w.copyDetailButton != nil {

@@ -25,6 +25,7 @@ import (
 	"loghelp"
 	"loghelp/internal/core"
 	"loghelp/internal/diagnostics"
+	"loghelp/internal/support"
 )
 
 var appVersion = loghelp.Version
@@ -66,6 +67,9 @@ type page struct {
 	detailSelection                                  detailSelection
 }
 type app struct {
+	support                                                       *support.Session
+	diagnosticErr                                                 error
+	diagnosticWarning                                             string
 	logToolsLabel                                                 *widget.Text
 	backgroundDiagnostic                                          bool
 	profileScene                                                  string
@@ -137,7 +141,7 @@ type app struct {
 	lastMouseX, lastMouseY                                        int
 }
 
-func Run(activations <-chan struct{}) error {
+func Run(activations <-chan struct{}, session *support.Session, diagnosticErr error) error {
 	config, configErr := core.LoadConfig()
 	deviceDiagnostic := os.Getenv("LOGHELP_PROFILE_DIR") != "" && os.Getenv("LOGHELP_PROFILE_SCENE") == "device-preview"
 	if deviceDiagnostic {
@@ -145,6 +149,7 @@ func Run(activations <-chan struct{}) error {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	w := &app{config: config, ctx: ctx, cancel: cancel, tasks: make(chan func(), 128), displayScale: monitorScale(), configWritable: configErr == nil}
+	w.support, w.diagnosticErr = session, diagnosticErr
 	go func() {
 		for {
 			select {
@@ -224,6 +229,7 @@ func Run(activations <-chan struct{}) error {
 			w.wirelessFormStatus("pair", "", "配对失败。请核对手机配对页面的 IP、配对端口和新配对码；检查 VPN/TUN 是否接管局域网连接。\nADB 原始信息：error: protocol fault (couldn't read status message): No error")
 		})
 	}
+	w.post(w.showDiagnosticNotice)
 	go w.monitor()
 	go w.monitorSystemTheme(w.systemColorMode)
 	defer w.shutdown()
@@ -303,8 +309,14 @@ func (w *app) post(action func()) {
 	}
 }
 func (w *app) async(work func() error, done func()) {
+	support.Record("INFO", "task.start", "")
 	go func() {
 		err := work()
+		if err != nil {
+			support.Record("ERROR", "task.failed", err.Error())
+		} else {
+			support.Record("INFO", "task.complete", "")
+		}
 		w.post(func() {
 			if err != nil {
 				w.message("操作失败", err.Error())
@@ -440,6 +452,7 @@ func (w *app) save() {
 		}
 	}
 	if err := core.SaveConfig(w.config); err != nil {
+		support.Record("ERROR", "config.save_failed", err.Error())
 		if p := w.active(); p != nil {
 			p.status = "保存设置失败：" + err.Error()
 		}
@@ -513,6 +526,11 @@ func (w *app) Update() error {
 		}
 	}
 ready:
+	if w.support != nil && !w.modal {
+		if warning := w.support.Warning(); warning != "" && warning != w.diagnosticWarning {
+			w.showDiagnosticNotice()
+		}
+	}
 	w.applySystemTheme()
 	allowInput := ebiten.IsFocused() && !w.backgroundDiagnostic && !w.fileDialogOpen
 	if w.columnDrag.key != "" && (!allowInput || w.modal) {

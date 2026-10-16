@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"loghelp/internal/support"
 	"sort"
 	"strconv"
 	"strings"
@@ -440,6 +441,7 @@ func (c *Collector) run(ctx context.Context) {
 			err = fmt.Errorf("日志流结束")
 		}
 		c.event("采集中断，将重试：" + err.Error())
+		support.Record("WARN", "capture.retry", err.Error())
 		select {
 		case <-ctx.Done():
 			return

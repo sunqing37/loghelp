@@ -7,6 +7,7 @@ import (
 
 	"github.com/ebitenui/ebitenui/widget"
 	"loghelp/internal/core"
+	"loghelp/internal/support"
 )
 
 func (w *app) showUpdates() {
@@ -155,6 +156,7 @@ func (w *app) updateSection(proxy string) (*widget.Container, func()) {
 				checkButton.GetWidget().Disabled = false
 				if err != nil {
 					status.Label = "检查失败，可重新检查或打开发布页手动下载"
+					support.Record("ERROR", "update.check_failed", err.Error())
 					notes.setPlain(err.Error() + "\n\n可关闭弹窗调整更新代理，或点击下方按钮用浏览器打开发布页。")
 				} else {
 					latest = result

@@ -9,6 +9,7 @@ import (
 	"loghelp"
 	"loghelp/internal/core"
 	"loghelp/internal/diagnostics"
+	"loghelp/internal/support"
 	"loghelp/internal/ui"
 	"os"
 )
@@ -54,9 +55,14 @@ func runApplication() error {
 			log.Printf("释放应用实例锁失败：%v", err)
 		}
 	}()
-	stopDiagnostics := diagnostics.StartMemory()
-	defer stopDiagnostics()
-	return ui.Run(instance.Activations())
+	session, diagnosticErr := support.Start()
+	err = func() error {
+		stopDiagnostics := diagnostics.StartMemory()
+		defer stopDiagnostics()
+		return ui.Run(instance.Activations(), session, diagnosticErr)
+	}()
+	session.Finish(err)
+	return err
 }
 
 // Release queries are read-only diagnostics for manual release verification.

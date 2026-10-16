@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"loghelp/internal/support"
 	"os"
 	"path/filepath"
 	"sort"
@@ -261,6 +262,7 @@ func (r *Recorder) Append(e *Entry) {
 }
 func (r *Recorder) failLocked(message string, lost uint64) {
 	if r.status.Error == "" {
+		support.Record("ERROR", "recording.failed", message)
 		r.status.Error = message
 		r.status.FailedAt = time.Now()
 	}

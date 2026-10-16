@@ -17,6 +17,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
 	"loghelp/internal/core"
+	"loghelp/internal/support"
 )
 
 const controlHeight = 36
@@ -564,6 +565,11 @@ func (w *app) showNestedDialog(title string, content *widget.Container) {
 	}
 }
 func (w *app) message(title, message string) {
+	level, event := "INFO", "ui.message"
+	if strings.Contains(title, "失败") || strings.Contains(title, "错误") {
+		level, event = "ERROR", "ui.error"
+	}
+	support.Record(level, event, title+"："+message)
 	label := w.label(message)
 	label.MaxWidth = float64(w.px(850))
 	w.show(title, w.column(label))

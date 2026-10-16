@@ -15,6 +15,11 @@ import (
 )
 
 func main() {
+	restarted, restartErr := core.AwaitRestart(os.Args[1:])
+	if restartErr != nil {
+		log.Print(restartErr)
+		os.Exit(1)
+	}
 	if handled, err := handleMirrorCheck(os.Args[1:]); handled {
 		if err != nil {
 			log.Print(err)
@@ -36,13 +41,17 @@ func main() {
 		}
 		return
 	}
-	if err := runApplication(); err != nil {
+	if err := runApplication(restarted); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func runApplication() error {
-	instance, err := core.StartAppInstance()
+func runApplication(restarted bool) error {
+	startInstance := core.StartAppInstance
+	if restarted {
+		startInstance = core.StartRestartedAppInstance
+	}
+	instance, err := startInstance()
 	if err != nil {
 		return err
 	}
@@ -56,11 +65,13 @@ func runApplication() error {
 		}
 	}()
 	session, diagnosticErr := support.Start()
+	restart := &core.RestartRequest{}
 	err = func() error {
 		stopDiagnostics := diagnostics.StartMemory()
 		defer stopDiagnostics()
-		return ui.Run(instance.Activations(), session, diagnosticErr)
+		return ui.Run(instance.Activations(), session, diagnosticErr, restart)
 	}()
+	err = restart.Complete(err)
 	session.Finish(err)
 	return err
 }

@@ -193,7 +193,7 @@ func (w *app) cancelUpdateCheck() {
 }
 
 func (w *app) installUpdate(release core.ReleaseUpdate, proxy string) {
-	if w.updateInProgress {
+	if w.updateInProgress || w.restarting {
 		w.message("更新中", "已有更新任务正在处理，请稍后重试。")
 		return
 	}

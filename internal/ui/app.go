@@ -67,6 +67,8 @@ type page struct {
 	detailSelection                                  detailSelection
 }
 type app struct {
+	restart                                                       *core.RestartRequest
+	restarting                                                    bool
 	support                                                       *support.Session
 	diagnosticErr                                                 error
 	diagnosticWarning                                             string
@@ -141,7 +143,7 @@ type app struct {
 	lastMouseX, lastMouseY                                        int
 }
 
-func Run(activations <-chan struct{}, session *support.Session, diagnosticErr error) error {
+func Run(activations <-chan struct{}, session *support.Session, diagnosticErr error, restart *core.RestartRequest) error {
 	config, configErr := core.LoadConfig()
 	deviceDiagnostic := os.Getenv("LOGHELP_PROFILE_DIR") != "" && os.Getenv("LOGHELP_PROFILE_SCENE") == "device-preview"
 	if deviceDiagnostic {
@@ -150,6 +152,7 @@ func Run(activations <-chan struct{}, session *support.Session, diagnosticErr er
 	ctx, cancel := context.WithCancel(context.Background())
 	w := &app{config: config, ctx: ctx, cancel: cancel, tasks: make(chan func(), 128), displayScale: monitorScale(), configWritable: configErr == nil}
 	w.support, w.diagnosticErr = session, diagnosticErr
+	w.restart = restart
 	go func() {
 		for {
 			select {

@@ -478,7 +478,7 @@ func (w *app) settingsFor(initial core.Config) {
 			return
 		}
 		w.showUpdatesWithProxy(proxy)
-	})), w.button("问题反馈与诊断", w.showFeedback), w.heading("连接与工作区"), w.muted("设置只保存在当前电脑"))
+	})), w.row(w.button("问题反馈与诊断", w.showFeedback), w.button("重启应用", w.confirmRestart)), w.heading("连接与工作区"), w.muted("设置只保存在当前电脑"))
 	add := func(key, label, value string) {
 		entry := w.input(value, "", nil, nil)
 		inputs[key] = entry

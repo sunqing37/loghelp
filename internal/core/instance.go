@@ -39,6 +39,14 @@ type instanceAddress struct {
 // StartAppInstance returns nil after notifying an existing GUI instance. CLI
 // queries and the update helper call their handlers before acquiring this lock.
 func StartAppInstance() (*AppInstance, error) {
+	return startAppInstance(false)
+}
+
+func StartRestartedAppInstance() (*AppInstance, error) {
+	return startAppInstance(true)
+}
+
+func startAppInstance(restarted bool) (*AppInstance, error) {
 	cache, err := os.UserCacheDir()
 	if err != nil {
 		return nil, fmt.Errorf("定位应用实例目录失败：%w", err)
@@ -52,6 +60,16 @@ func StartAppInstance() (*AppInstance, error) {
 		return nil, fmt.Errorf("打开应用实例锁失败：%w", err)
 	}
 	owned, err := lockAppInstance(file)
+	if restarted && err == nil && !owned {
+		deadline := time.Now().Add(30 * time.Second)
+		for !owned && err == nil && time.Now().Before(deadline) {
+			time.Sleep(100 * time.Millisecond)
+			owned, err = lockAppInstance(file)
+		}
+		if err == nil && !owned {
+			err = fmt.Errorf("等待旧程序退出超时，请手动重新打开")
+		}
+	}
 	if err != nil {
 		file.Close()
 		return nil, fmt.Errorf("锁定应用实例失败：%w", err)

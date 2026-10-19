@@ -1,8 +1,11 @@
 package ui
 
 import (
+	"fmt"
 	"io/fs"
+	"maps"
 	"path/filepath"
+	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"loghelp/internal/core"
@@ -65,6 +68,80 @@ func (w *app) fileMenu() {
 		path := path
 		box.AddChild(w.button(w.wirelessText(path, w.wirelessContentWidth()-w.px(28)), func() { w.openLogPath(path) }))
 	}
-	box.AddChild(w.button("清空最近打开", func() { w.config.RecentFiles = nil; w.save(); w.fileMenu() }))
-	w.show("文件", box)
+	box.AddChild(w.button("清空最近打开", func() { w.config.RecentFiles = nil; w.save(); w.fileMenu() }), w.button("排查方案", w.workspaces))
+	w.show("文件与排查方案", box)
+}
+
+func (w *app) workspaces() {
+	box := w.column(w.diagnosticText("方案保存应用、过滤、搜索、设备/文件路径、多个日志标签和显示列。恢复时新增标签，保留当前采集与录制；实时标签需手动开始采集。"), w.button("保存当前排查方案", func() {
+		if !w.configWritable {
+			w.message("无法保存方案", "配置当前不可写。")
+			return
+		}
+		w.syncInputs()
+		var tabs []core.TabState
+		for _, p := range w.pages {
+			if p.shell == nil {
+				t := p.state
+				t.CaseSensitive = p.caseSensitive
+				t.SearchRegex = p.regex
+				tabs = append(tabs, t)
+			}
+		}
+		if len(tabs) == 0 || len(tabs) > 20 {
+			w.message("保存方案", "一个方案需包含 1–20 个日志标签。")
+			return
+		}
+		columns := append([]string(nil), w.config.Columns...)
+		widths := maps.Clone(w.config.ColumnWidths)
+		wrap := w.config.Wrap
+		w.prompt("方案名称（同名覆盖）", "", func(name string) {
+			name = strings.TrimSpace(name)
+			if name == "" || len([]rune(name)) > 60 {
+				w.message("方案名称", "请输入 1–60 个字符。")
+				return
+			}
+			plan := core.Workspace{Name: name, Tabs: tabs, Columns: columns, ColumnWidths: widths, Wrap: wrap}
+			for i, p := range w.config.Workspaces {
+				if p.Name == name {
+					w.config.Workspaces[i] = plan
+					w.save()
+					return
+				}
+			}
+			if len(w.config.Workspaces) >= 20 {
+				w.message("方案已满", "最多 20 个方案，请先删除旧方案。")
+				return
+			}
+			w.config.Workspaces = append(w.config.Workspaces, plan)
+			w.save()
+		})
+	}))
+	for i, plan := range w.config.Workspaces {
+		i, plan := i, plan
+		box.AddChild(w.diagnosticText(fmt.Sprintf("%s · %d 个标签", plan.Name, len(plan.Tabs))), w.row(w.button("恢复", func() {
+			if len(plan.Tabs) > 20 || len(w.pages)+len(plan.Tabs) > 40 {
+				w.message("标签过多", "恢复后最多 40 个标签，请先关闭部分标签。")
+				return
+			}
+			w.closeModal()
+			w.syncInputs()
+			w.config.Columns = append([]string(nil), plan.Columns...)
+			w.config.ColumnWidths = maps.Clone(plan.ColumnWidths)
+			w.config.Wrap = plan.Wrap
+			for _, t := range plan.Tabs {
+				p := w.newPage(t)
+				if t.File != "" {
+					w.openOffline(p, t.File)
+				}
+			}
+			w.rebuild()
+			w.save()
+		}), w.button("删除", func() {
+			w.config.Workspaces = append(w.config.Workspaces[:i], w.config.Workspaces[i+1:]...)
+			w.save()
+			w.workspaces()
+		})))
+	}
+	w.show("排查方案", box)
 }

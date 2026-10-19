@@ -22,6 +22,7 @@ type TabState struct {
 }
 type Config struct {
 	RecentFiles      []string          `json:"recent_files,omitempty"`
+	Workspaces       []Workspace       `json:"workspaces,omitempty"`
 	Bookmarks        []Bookmark        `json:"bookmarks,omitempty"`
 	Version          int               `json:"version"`
 	ADB              string            `json:"adb,omitempty"`
@@ -48,6 +49,14 @@ type Config struct {
 	Shortcuts        map[string]string `json:"shortcuts,omitempty"`
 	ContextBefore    int               `json:"context_before"`
 	ContextAfter     int               `json:"context_after"`
+}
+
+type Workspace struct {
+	Name         string         `json:"name"`
+	Tabs         []TabState     `json:"tabs"`
+	Columns      []string       `json:"columns"`
+	ColumnWidths map[string]int `json:"column_widths,omitempty"`
+	Wrap         bool           `json:"wrap"`
 }
 
 func DefaultConfig() Config {

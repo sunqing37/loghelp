@@ -6,6 +6,7 @@ import (
 	"maps"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"loghelp/internal/core"
@@ -144,4 +145,21 @@ func (w *app) workspaces() {
 		})))
 	}
 	w.show("排查方案", box)
+}
+
+func cacheWindowText(p *page) string {
+	var first, last time.Time
+	if p.paused {
+		if len(p.frozen) > 0 {
+			first, last = p.frozen[0].Received, p.frozen[len(p.frozen)-1].Received
+		}
+	} else if p.collector != nil {
+		first, last = p.collector.Ring.Window()
+	} else if len(p.stopped) > 0 {
+		first, last = p.stopped[0].Received, p.stopped[len(p.stopped)-1].Received
+	}
+	if first.IsZero() || last.IsZero() {
+		return ""
+	}
+	return " · 缓存接收时间 " + first.Format("01-02 15:04:05") + "–" + last.Format("01-02 15:04:05")
 }

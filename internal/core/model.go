@@ -162,6 +162,16 @@ func (r *Ring) Snapshot() ([]*Entry, uint64, uint64) {
 
 func (r *Ring) Version() uint64 { r.mu.RLock(); defer r.mu.RUnlock(); return r.seq }
 
+// Window uses receipt times so device-clock jumps do not reverse the range.
+func (r *Ring) Window() (time.Time, time.Time) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.count == 0 {
+		return time.Time{}, time.Time{}
+	}
+	return r.items[r.head].Received, r.items[(r.head+r.count-1)%len(r.items)].Received
+}
+
 // Since is bounded by the display ring; missed/overwritten records are reported.
 func (r *Ring) Since(seq uint64, limit int) ([]*Entry, uint64, uint64) {
 	r.mu.RLock()

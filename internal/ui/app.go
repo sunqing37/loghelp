@@ -969,7 +969,7 @@ func (w *app) updateLiveStatus(p *page) {
 	if p.paused && p.collector != nil {
 		state += fmt.Sprintf(" · 显示已暂停，后台新增 %s 条（全部记录，含事件）", number(int(p.collector.Ring.Version()-p.pauseSeq)))
 	}
-	p.status = fmt.Sprintf("实时缓存 · %d/%d 条 · 搜索 %d 处 · 淘汰 %d · %s", len(p.rawResult.Rows), result.Total, result.SearchCount, result.Dropped, state)
+	p.status = fmt.Sprintf("实时缓存 · %d/%d 条 · 搜索 %d 处 · 淘汰 %d · %s", len(p.rawResult.Rows), result.Total, result.SearchCount, result.Dropped, state) + cacheWindowText(p)
 }
 func (w *app) openOffline(p *page, path string) {
 	w.openOfflineAt(p, path, nil)

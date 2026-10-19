@@ -337,7 +337,7 @@ func (w *app) logMenu() {
 	if p == nil {
 		return
 	}
-	w.show("日志操作", w.column(w.button("跳到时间…", func() { w.closeModal(); w.jumpTime() }), w.button("取消当前查询", func() {
+	w.show("日志操作", w.column(w.button("JSON 格式化查看", w.viewJSON), w.button("跳到时间…", func() { w.closeModal(); w.jumpTime() }), w.button("取消当前查询", func() {
 		w.closeModal()
 		if p.cancel != nil {
 			p.cancel()

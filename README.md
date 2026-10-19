@@ -80,6 +80,12 @@ FFmpeg 可安装到 PATH、放在程序旁 `runtime/ffmpeg`（Windows 为 `runti
 
 新版 Windows EXE 位于 `bin/loghelp.exe`。Windows 已验证真实设备视频接收、应用自有画面和原分辨率图片剪贴板格式；macOS/Linux 的实际桌面、粘贴与触摸交互仍需在目标系统验收，具体编译/运行记录见 [手动验收记录](docs/manual-validation.md)。
 
+## 排查与留证
+
+日志工具栏「更多」提供以下入口：
+
+- **JSON 格式化查看**：从选中日志或合并详情中提取第一个有效 JSON 对象/数组，支持原文、格式化全文、层级折叠/展开和复制字段值。保留大整数原文，不经浮点数转换；单次最多 1 MiB、4000 个节点、64 层，每页 40 个可见节点。
+
 ## Wi-Fi 连接设备
 
 日志设备侧栏点击「Wi-Fi」，手机和电脑需处于同一可互访网络，使用支持无线配对的新版 Android SDK Platform-Tools。连接流程参考 [Android 官方 ADB 说明](https://developer.android.com/tools/adb)：

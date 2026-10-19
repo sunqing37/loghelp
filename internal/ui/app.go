@@ -233,6 +233,9 @@ func Run(activations <-chan struct{}, session *support.Session, diagnosticErr er
 		})
 	}
 	w.post(w.showDiagnosticNotice)
+	if w.backgroundDiagnostic {
+		w.post(w.profileInvestigationScene)
+	}
 	go w.monitor()
 	go w.monitorSystemTheme(w.systemColorMode)
 	defer w.shutdown()

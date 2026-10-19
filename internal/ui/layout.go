@@ -115,7 +115,7 @@ func (w *app) rebuild() {
 	if w.preview != nil {
 		previewKind = "active"
 	}
-	chrome := w.stretchRow(brand, w.row(w.action("打开文件", "quiet", w.openFile), w.action("设备预览", previewKind, w.openDevicePreview), w.action("终端", "quiet", w.openTerminal), w.action("录制管理", "quiet", w.recordings), w.action("设置", "quiet", w.settings)))
+	chrome := w.stretchRow(brand, w.row(w.action("文件", "quiet", w.fileMenu), w.action("设备预览", previewKind, w.openDevicePreview), w.action("终端", "quiet", w.openTerminal), w.action("录制管理", "quiet", w.recordings), w.action("设置", "quiet", w.settings)))
 	root.AddChild(w.inset(chrome, 12, c.surface))
 	w.ui = &ebitenui.UI{Container: root, PostRenderHook: w.drawPanels}
 	if p == nil {
@@ -322,12 +322,7 @@ func (w *app) tabStrip() *widget.Container {
 	return w.stretchRow(w.tabScroll, w.row(w.action("+", "quiet", func() { w.syncInputs(); w.newPage(core.TabState{Name: "Logcat"}); w.rebuild(); w.save() }), w.action("标签", "quiet", w.tabMenu)))
 }
 func (w *app) openFile() {
-	w.browse("file", func(path string) {
-		w.syncInputs()
-		p := w.newPage(core.TabState{Name: "离线", File: path})
-		w.rebuild()
-		w.openOffline(p, path)
-	})
+	w.browse("file", w.openLogPath)
 }
 func (w *app) tabMenu() {
 	w.show("管理当前标签", w.column(w.button("复制标签", func() { w.closeModal(); w.duplicate() }), w.button("重命名", func() { w.closeModal(); w.rename() }), w.button("向左移动", func() { w.closeModal(); w.move(-1) }), w.button("向右移动", func() { w.closeModal(); w.move(1) }), w.action("关闭标签", "danger", func() { w.closeModal(); w.closePage() })))

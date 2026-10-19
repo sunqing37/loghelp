@@ -558,6 +558,7 @@ ready:
 	}
 	clear(w.triggerWorkers[len(alive):])
 	w.triggerWorkers = alive
+	w.dropLogs()
 	if w.support != nil && !w.modal {
 		if warning := w.support.Warning(); warning != "" && warning != w.diagnosticWarning {
 			w.showDiagnosticNotice()
@@ -1013,6 +1014,7 @@ func (w *app) openOfflineTarget(p *page, path string, target *core.Entry, bookma
 				return
 			}
 			p.offline = source
+			w.config.RecentFiles = core.Remember(w.config.RecentFiles, source.Path, 15)
 			p.state.Name = filepath.Base(path)
 			p.offset = 0
 			if seq != 0 {

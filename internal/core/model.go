@@ -161,3 +161,29 @@ func (r *Ring) Snapshot() ([]*Entry, uint64, uint64) {
 }
 
 func (r *Ring) Version() uint64 { r.mu.RLock(); defer r.mu.RUnlock(); return r.seq }
+
+// Since is bounded by the display ring; missed/overwritten records are reported.
+func (r *Ring) Since(seq uint64, limit int) ([]*Entry, uint64, uint64) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.count == 0 || seq >= r.seq {
+		return nil, r.seq, 0
+	}
+	first := r.items[r.head].Seq
+	next := seq + 1
+	lost := uint64(0)
+	if next < first {
+		lost = first - next
+		next = first
+	}
+	if r.seq-next+1 > uint64(limit) {
+		skip := r.seq - next + 1 - uint64(limit)
+		next += skip
+		lost += skip
+	}
+	rows := make([]*Entry, 0, int(r.seq-next+1))
+	for n := next; n <= r.seq; n++ {
+		rows = append(rows, r.items[(r.head+int(n-first))%len(r.items)])
+	}
+	return rows, r.seq, lost
+}

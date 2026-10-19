@@ -18,6 +18,15 @@ type EvidenceOptions struct {
 	Redact                       bool
 	Info                         map[string]string
 	Screenshot                   *ScreenFrame
+	Trigger                      *TriggerDetails
+}
+
+type TriggerDetails struct {
+	Sequence   uint64    `json:"sequence"`
+	DetectedAt time.Time `json:"detected_at"`
+	Before     int       `json:"before"`
+	After      int       `json:"after"`
+	Lost       uint64    `json:"lost_or_trimmed"`
 }
 
 // Freeze every exported byte before preview. Never silently truncate evidence.
@@ -85,6 +94,9 @@ func BuildEvidence(ctx context.Context, scan EntryScan, opt EvidenceOptions) (*s
 	}
 	meta := map[string]any{"created_at": time.Now(), "from": opt.From, "to_inclusive": opt.To, "scope": opt.Scope, "note": note, "package": pkg, "serial": serial, "device_info": info, "records": count, "redacted": opt.Redact, "limitations": "脱敏为文本规则尽力处理，图片未自动打码。设备时间可能回拨；实时缓存可能已有淘汰。截图和设备版本为收集当时的信息，不能证明历史状态。"}
 	r := &support.Report{}
+	if opt.Trigger != nil {
+		meta["trigger"] = opt.Trigger
+	}
 	if opt.Screenshot != nil {
 		meta["screenshot_captured_at"] = opt.Screenshot.CapturedAt
 		r.Files = append(r.Files, support.ReportFile{Name: "screenshot.png", Data: opt.Screenshot.PNG})

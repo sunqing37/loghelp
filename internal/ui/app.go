@@ -33,6 +33,9 @@ var appRevision = loghelp.Revision
 var appVersionLabel = fmt.Sprintf("v%s · r%d", appVersion, appRevision)
 
 type page struct {
+	triggerCancel                                    context.CancelFunc
+	triggerID                                        uint64
+	triggerStatus                                    string
 	timeAnchor                                       *timeAnchor
 	pauseSeq, pauseDropped                           uint64
 	state                                            core.TabState
@@ -67,6 +70,7 @@ type page struct {
 	detailSelection                                  detailSelection
 }
 type app struct {
+	triggerWorkers                                                []<-chan struct{}
 	restart                                                       *core.RestartRequest
 	restarting                                                    bool
 	support                                                       *support.Session
@@ -401,6 +405,11 @@ func (w *app) closeTab(p *page) {
 	}
 	w.syncInputs()
 	p.dead = true
+	if p.triggerCancel != nil {
+		p.triggerCancel()
+		p.triggerCancel = nil
+	}
+	p.triggerID++
 	p.job++
 	if p.cancel != nil {
 		p.cancel()
@@ -486,6 +495,13 @@ func (w *app) shutdown() {
 	// temporary server files before the process exits.
 	deadline := time.NewTimer(8 * time.Second)
 	defer deadline.Stop()
+	for _, done := range w.triggerWorkers {
+		select {
+		case <-done:
+		case <-deadline.C:
+			return
+		}
+	}
 	for _, stream := range w.previewStreams {
 		select {
 		case <-stream.Done():
@@ -532,6 +548,16 @@ func (w *app) Update() error {
 		}
 	}
 ready:
+	alive := w.triggerWorkers[:0]
+	for _, done := range w.triggerWorkers {
+		select {
+		case <-done:
+		default:
+			alive = append(alive, done)
+		}
+	}
+	clear(w.triggerWorkers[len(alive):])
+	w.triggerWorkers = alive
 	if w.support != nil && !w.modal {
 		if warning := w.support.Warning(); warning != "" && warning != w.diagnosticWarning {
 			w.showDiagnosticNotice()
@@ -724,6 +750,12 @@ func (w *app) stop(p *page) {
 	if p == nil {
 		return
 	}
+	if p.triggerCancel != nil {
+		p.triggerCancel()
+		p.triggerCancel = nil
+		p.triggerStatus = "采集停止，监听已取消"
+	}
+	p.triggerID++
 	if p.cancel != nil {
 		p.cancel()
 	}
@@ -930,6 +962,9 @@ func (w *app) updateLiveStatus(p *page) {
 		}
 	}
 	result := p.result
+	if p.triggerStatus != "" {
+		state += " · " + shortText(p.triggerStatus, 80)
+	}
 	if p.paused && p.collector != nil {
 		state += fmt.Sprintf(" · 显示已暂停，后台新增 %s 条（全部记录，含事件）", number(int(p.collector.Ring.Version()-p.pauseSeq)))
 	}

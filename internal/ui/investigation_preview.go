@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"os"
 	"time"
 
@@ -10,7 +11,7 @@ import (
 // Local UI profiling fixtures: no ADB commands, clipboard changes or exports.
 func (w *app) profileInvestigationScene() {
 	scene := os.Getenv("LOGHELP_PROFILE_SCENE")
-	if scene != "json-inspector" {
+	if scene != "json-inspector" && scene != "log-overview" && scene != "log-events" {
 		return
 	}
 	p := w.active()
@@ -30,5 +31,9 @@ func (w *app) profileInvestigationScene() {
 	switch scene {
 	case "json-inspector":
 		w.viewJSON()
+	case "log-overview", "log-events":
+		s := w.investigationSource(p)
+		r, _ := core.AnalyzeLogs(context.Background(), s.scan)
+		w.showInsights(s, r, scene == "log-events", 0)
 	}
 }

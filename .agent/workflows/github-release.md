@@ -18,6 +18,12 @@ python -X utf8 scripts/build.py --desktop
 python -X utf8 .agent/scripts/package-release.py --all
 ```
 
+Windows 主机可加 `--setup`，在 ZIP 之外为 Windows 目标生成当前用户安装包；仅打包 Windows amd64 使用 `python -X utf8 .agent/scripts/package-release.py --setup`，六平台使用 `--all --setup`。要求 Inno Setup 6.4+（可用 `--iscc` 指定），不重新编译 Go。Setup 固定使用用户可写目录；x64 复用 ZIP 自动更新，ARM64 手动升级，因此发布 Setup 时必须同时上传同版本、架构、修订的 ZIP 和校验文件。
+
+Setup 名称为 `loghelp-<版本>-windows-<架构>[-rN]-setup.exe`，并合并到同一个包外 `SHA256SUMS[-rN].txt`。同名 JSON 是本地打包审计记录，记录脚本、编译器、输入和产物哈希，无需上传。已有不同内容的 Setup 不覆盖，正式发布需递增修订。`--local` 仅用于未提交改动的本地验收，产物进入 `artifacts/packages/<版本>/` 且元数据标记本地预览，不允许作为正式 Release 附件。
+
+安装包手动验收包括：当前用户安装与快捷方式、同版修复/新版覆盖、拒绝旧修订、安装版 ZIP 更新及系统版本登记、运行期间安装/卸载拦截、默认保留数据、确认删除数据和静默卸载保留数据。清理验证使用隔离用户环境；不得删除开发者真实设置或录制目录。
+
 打包脚本检查目标、版本、构建指纹和二进制哈希，不重新编译。发布目录为 `dist/<版本>/`：
 
 多平台发布逐一执行 `scripts/build.py --desktop --cross-desktop --target-os <os> --arch <arch>`，串行链接 Windows/darwin/Linux 的 amd64/arm64。`--all` 核对六个成功构建记录后打包；也可用 `--target-os` 和 `--arch` 单独打包（默认 Windows amd64）。交叉链接与目标系统运行验收必须分别报告。

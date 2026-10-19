@@ -16,7 +16,7 @@ import time
 
 
 ROOT = Path(__file__).resolve().parent.parent
-BUILD_NAMES = {"compile", "link", "gcc", "clang", "gradle", "ninja", "cmake"}
+BUILD_NAMES = {"compile", "link", "gcc", "clang", "gradle", "ninja", "cmake", "iscc"}
 GRADLE_EVENT = re.compile(r"daemon has (started|finished) executing the build")
 
 

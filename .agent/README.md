@@ -20,7 +20,8 @@
 │       └── SKILL.md
 └── scripts/
     ├── git-commit.py
-    └── package-release.py
+    ├── package-release.py
+    └── package-setup.py
 ```
 
 `rules/` 放短而明确的约束，`workflows/` 放可执行步骤，`scripts/` 放本项目辅助工具。没有实际用途不创建空目录；需要专属工具入口时仅引用根 `AGENTS.md`。
@@ -36,6 +37,7 @@
 ```powershell
 python -X utf8 .agent/scripts/git-commit.py --file artifacts/commit-message.txt
 python -X utf8 .agent/scripts/package-release.py
+python -X utf8 .agent/scripts/package-release.py --setup
 ```
 
 提交脚本只提交已暂存内容，不自动暂存、同步分支或推送。打包脚本复用符合当前源码指纹的 EXE，不代替构建授权或发布授权。详见对应规则及工作流。

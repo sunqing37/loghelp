@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -49,7 +50,19 @@ def main():
     parser.add_argument("--all", action="store_true", help="Package all six platforms serially.")
     parser.add_argument("--target-os", choices=("windows", "darwin", "linux"), default="windows")
     parser.add_argument("--arch", choices=("amd64", "arm64"), default="amd64")
+    parser.add_argument("--setup", action="store_true", help="Also package a per-user Windows Setup; keep the ZIP for updates.")
+    parser.add_argument("--iscc", help="Path to Inno Setup 6.4+ ISCC.exe (or set ISCC).")
+    parser.add_argument("--local", action="store_true", help="Allow uncommitted sources; write review packages to artifacts/packages, never dist.")
     args = parser.parse_args()
+    setup_info = None
+    compiler = None
+    if args.setup:
+        if os.name != "nt" or not args.all and args.target_os != "windows":
+            parser.error("--setup requires a Windows host and a Windows target (or --all)")
+        setup_spec = importlib.util.spec_from_file_location("loghelp_setup", Path(__file__).with_name("package-setup.py"))
+        setup_info = importlib.util.module_from_spec(setup_spec)
+        setup_spec.loader.exec_module(setup_info)
+        compiler = setup_info.find_compiler(args.iscc)
     version = (ROOT / "VERSION").read_text(encoding="utf-8-sig").strip()
     revision_text = (ROOT / "REVISION").read_text(encoding="utf-8-sig").strip()
     values = [*version.split("."), revision_text]
@@ -58,7 +71,8 @@ def main():
     revision = int(revision_text)
     if revision > (1 << 64) - 1:
         raise ValueError("REVISION 超出程序支持范围。")
-    if git("status", "--porcelain", "--untracked-files=normal"):
+    dirty = bool(git("status", "--porcelain", "--untracked-files=normal"))
+    if dirty and not args.local:
         raise ValueError("发布源码尚未完整提交；请先核对工作区并提交，避免源码来源错位。")
     spec = importlib.util.spec_from_file_location("loghelp_build_info", ROOT / "scripts/build.py")
     build_info = importlib.util.module_from_spec(spec)
@@ -66,7 +80,7 @@ def main():
     fingerprint = build_info.fingerprint(True)
     commit = git("rev-parse", "HEAD")
     suffix = f"-r{revision}" if revision else ""
-    output = ROOT / "dist" / version
+    output = ROOT / ("artifacts/packages" if args.local else "dist") / version
     output.mkdir(parents=True, exist_ok=True)
     # Validate every build before creating any archive.
     plans = []
@@ -88,6 +102,9 @@ def main():
         metadata = {"version": version, "revision": revision, "os": system, "arch": arch,
                     "exe_sha256": digest, "source_commit": commit, "build_completed": stamp["Completed"],
                     "cgo_enabled": False, "build_host": f"{stamp['HostOS']}/{stamp['HostArch']}"}
+        if args.local:
+            metadata.update({"local_preview": True, "source_dirty": dirty,
+                             "source_fingerprint_sha256": sha(fingerprint.encode("utf-8"))})
         basename = f"loghelp-{version}-{system}-{arch}{suffix}"
         plans.append((output / f"{basename}.zip", basename, files, metadata, filename))
     created = []
@@ -108,6 +125,13 @@ def main():
             verify_archive(archive, basename, files, metadata)
             result = {**metadata, "archive": str(archive), "bytes": archive.stat().st_size, "sha256": sha(archive.read_bytes())}
             results.append(result)
+            if setup_info and metadata["os"] == "windows":
+                results.append(setup_info.package_setup(output, basename, files, metadata, compiler, build_info, created))
+        if build_info.fingerprint(True) != fingerprint:
+            raise ValueError("源码在打包期间发生变化，已取消本次产物。")
+        for _, _, files, metadata, filename in plans:
+            if sha(files[filename].read_bytes()) != metadata["exe_sha256"]:
+                raise ValueError("可执行文件在打包期间发生变化，已取消本次产物。")
         checksum = output / f"SHA256SUMS{suffix}.txt"
         # Merge verified packages from separate platform invocations, never replace their bytes.
         lines = {}

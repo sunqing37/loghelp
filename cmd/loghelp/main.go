@@ -34,6 +34,10 @@ func main() {
 		}
 		return
 	}
+	if err := core.GuardInstallation(); err != nil {
+		log.Print(err)
+		os.Exit(1)
+	}
 	if handled, err := core.HandleUpdateCommand(os.Args[1:]); handled {
 		if err != nil {
 			log.Print(err)
@@ -65,6 +69,9 @@ func runApplication(restarted bool) error {
 		}
 	}()
 	session, diagnosticErr := support.Start()
+	if err := core.SyncInstalledVersion(); err != nil {
+		log.Print(err)
+	}
 	restart := &core.RestartRequest{}
 	err = func() error {
 		stopDiagnostics := diagnostics.StartMemory()

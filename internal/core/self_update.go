@@ -64,7 +64,7 @@ func PrepareUpdate(ctx context.Context, release ReleaseUpdate, options UpdateNet
 	}
 	dir, err := os.MkdirTemp(filepath.Dir(target), ".loghelp-update-")
 	if err != nil {
-		return nil, fmt.Errorf("程序所在目录不可写，请将便携版移动到有写入权限的目录后重试：%w", err)
+		return nil, fmt.Errorf("程序所在目录不可写，请将便携版移动到可写目录，或将安装版重新安装到当前用户目录后重试：%w", err)
 	}
 	defer func() {
 		if err != nil {

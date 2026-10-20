@@ -2,6 +2,10 @@
 
 LogHelp 使用 scrcpy 3.3.4 的 Android 服务，Go 代码管理 ADB 转发、H.264 包、持续触摸控制、最新帧缓冲和 Ebitengine 绘制。截图另用 ADB PNG 输出获取原始分辨率，不从视频缩放帧生成。
 
+录屏直接复用投屏的 H.264 编码包，以纯 Go 的 [mp4ff v0.59.0](https://github.com/Eyevinn/mp4ff/tree/v0.59.0) 写入带时长和关键帧索引的分片 MP4，不新增外部程序、Android 服务或 CGO 依赖，Windows/macOS/Linux 共用实现。视频保留投屏分辨率（最长边上限 1280）与设备时间戳，不含音频，也不提供原分辨率录屏选项。编码器关键帧间隔设为 1 秒，开始后等待下一个关键帧；超过 15 秒未收到关键帧会报告失败。录屏不设置三分钟时限；实际持续时间取决于设备连接与本地磁盘空间。
+
+先选保存位置，录制中后台写入目标目录的 `.loghelp-recording-*.mp4`，正常结束并刷新成功后才替换目标文件；无有效视频或写入失败不会覆盖旧文件。暂停预览仅暂停显示，不暂停录屏；关闭、重连、切换和退出时结束并收尾。画面编码参数变化或时间戳异常时保存变化前的片段并提示；连接断开、写入队列超过 240 包或 32 MiB 时结束并提示，避免阻塞投屏或丢掉帧后继续生成损坏视频。保存/改名失败会提示临时文件位置（有已写入帧时保留），不能保证磁盘故障后的临时文件完整；强制结束程序也不等同于正常停止保存。
+
 | 平台 | 解码 | 图片剪贴板 |
 | --- | --- | --- |
 | Windows amd64 | 默认内嵌 FFmpeg 7.1.1 动态库；也可指定 FFmpeg 可执行程序 | Windows PNG 和 CF_DIB |
@@ -18,6 +22,7 @@ LogHelp 使用 scrcpy 3.3.4 的 Android 服务，Go 代码管理 ADB 转发、H.
 第三方源代码与许可证：
 
 - [scrcpy 3.3.4](https://github.com/Genymobile/scrcpy/tree/v3.3.4)，Apache-2.0。
+- [mp4ff v0.59.0](https://github.com/Eyevinn/mp4ff/tree/v0.59.0)，MIT；完整许可见 [licenses/mp4ff.txt](licenses/mp4ff.txt)。
 - [FFmpeg 7.1.1](https://github.com/FFmpeg/FFmpeg/tree/n7.1.1)，本次官方附件中的配置未启用 GPL，使用 LGPL 许可；运行库附 LICENSE.md、LGPLv2.1/LGPLv3 文本和来源信息。
 - FFmpeg 官方包还包含 [dav1d](https://code.videolan.org/videolan/dav1d) 和 [zlib](https://github.com/madler/zlib) 的代码，随资源保留对应许可文本。
 

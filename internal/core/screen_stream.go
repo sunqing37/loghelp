@@ -36,17 +36,19 @@ type VideoFrame struct {
 }
 
 type ScreenStream struct {
-	ctx        context.Context
-	cancel     context.CancelFunc
-	done       chan struct{}
-	control    chan []byte
-	mu         sync.Mutex
-	latest     *VideoFrame
-	err        error
-	frames     uint64
-	ready      bool
-	pixels     sync.Pool
-	decoderLog *streamLog
+	ctx         context.Context
+	cancel      context.CancelFunc
+	done        chan struct{}
+	control     chan []byte
+	mu          sync.Mutex
+	latest      *VideoFrame
+	err         error
+	frames      uint64
+	ready       bool
+	pixels      sync.Pool
+	decoderLog  *streamLog
+	videoConfig []byte
+	recording   *ScreenRecording
 }
 
 func StartScreenStream(parent context.Context, adb *ADB, serial string) *ScreenStream {
@@ -59,14 +61,21 @@ func StartScreenStream(parent context.Context, adb *ADB, serial string) *ScreenS
 			s.err = err
 		}
 		s.ready = false
+		recordingErr := s.err
 		s.mu.Unlock()
+		if recording := s.stopRecording(recordingErr); recording != nil {
+			<-recording.Done()
+		}
 		cancel()
 		close(s.done)
 	}()
 	return s
 }
 
-func (s *ScreenStream) Close()                { s.cancel() }
+func (s *ScreenStream) Close() {
+	s.stopRecording(nil)
+	s.cancel()
+}
 func (s *ScreenStream) Done() <-chan struct{} { return s.done }
 
 func (s *ScreenStream) Diagnostic() string {
@@ -271,7 +280,7 @@ func (s *ScreenStream) run(adb *ADB, serial string) error {
 	serverContext, serverCancel := context.WithCancel(s.ctx)
 	defer serverCancel()
 	command := adb.Command(serverContext, serial, "shell", "CLASSPATH="+remote, "app_process", "/", "com.genymobile.scrcpy.Server", mirrorVersion,
-		"scid="+id, "tunnel_forward=true", "audio=false", "control=true", "max_size=1280", "max_fps=60", "video_bit_rate=8000000", "send_device_meta=false", "clipboard_autosync=false", "power_on=false")
+		"scid="+id, "tunnel_forward=true", "audio=false", "control=true", "max_size=1280", "max_fps=60", "video_bit_rate=8000000", "video_codec_options=i-frame-interval=1", "send_device_meta=false", "clipboard_autosync=false", "power_on=false")
 	log := &streamLog{buffer: limitedBuffer{limit: 16 << 10}}
 	command.Stdout, command.Stderr = log, log
 	if err := command.Start(); err != nil {
@@ -343,6 +352,7 @@ func (s *ScreenStream) run(adb *ADB, serial string) error {
 		if _, err := io.ReadFull(video, packet); err != nil {
 			return fmt.Errorf("读取视频数据：%w", err)
 		}
+		s.recordPacket(packet, binary.BigEndian.Uint64(header[:8]))
 		if header[0]&0x80 != 0 {
 			if size > 1<<20 {
 				return fmt.Errorf("视频配置数据过大")

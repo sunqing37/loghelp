@@ -3,6 +3,7 @@ module loghelp
 go 1.25.0
 
 require (
+	github.com/Eyevinn/mp4ff v0.59.0
 	github.com/atotto/clipboard v0.1.4
 	github.com/ebitengine/purego v0.11.0
 	github.com/ebitenui/ebitenui v0.7.3

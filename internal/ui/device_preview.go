@@ -23,6 +23,10 @@ type devicePreview struct {
 	ctx                                          context.Context
 	cancel                                       context.CancelFunc
 	stream                                       *core.ScreenStream
+	recording                                    *core.ScreenRecording
+	record                                       *widget.Button
+	recordLabel                                  *widget.Text
+	recordStatus                                 string
 	texture                                      *ebiten.Image
 	shader                                       *ebiten.Shader
 	frameSize                                    image.Point
@@ -180,6 +184,9 @@ func (w *app) devicePanel() *widget.Container {
 	d.reconnect = w.action("重连", "quiet", w.reconnectDevicePreview)
 	d.screenshot = w.action("保存截图", "primary", func() { w.captureDeviceScreenshot(false) })
 	d.copyScreenshot = w.action("复制截图", "quiet", func() { w.captureDeviceScreenshot(true) })
+	d.record = w.action("开始录屏", "primary", w.toggleDeviceRecording)
+	d.recordLabel = w.muted("")
+	d.recordLabel.MaxWidth = float64(w.px(288))
 	d.panel = widget.NewContainer(widget.ContainerOpts.WidgetOpts(widget.WidgetOpts.MinSize(w.px(160), w.px(180))))
 	d.keys = nil
 	buttons := w.row()
@@ -195,8 +202,8 @@ func (w *app) devicePanel() *widget.Container {
 	d.statusLabel = w.muted(d.status)
 	d.statusLabel.MaxWidth = float64(w.px(288))
 	d.statusLabel.GetWidget().MinHeight = w.px(64)
-	content := widget.NewContainer(widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(1), widget.GridLayoutOpts.Stretch([]bool{true}, []bool{false, false, false, false, true, false, false, false}), widget.GridLayoutOpts.Spacing(0, w.px(10)))))
-	content.AddChild(header, serial, w.row(d.pause, d.reconnect), w.row(d.screenshot, d.copyScreenshot), d.panel, buttons, w.muted("视频投屏 · 点击／拖动操作设备"), d.statusLabel)
+	content := widget.NewContainer(widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(1), widget.GridLayoutOpts.Stretch([]bool{true}, []bool{false, false, false, false, false, true, false, false, false}), widget.GridLayoutOpts.Spacing(0, w.px(10)))))
+	content.AddChild(header, serial, w.row(d.pause, d.reconnect), w.row(d.screenshot, d.copyScreenshot), w.row(d.record, d.recordLabel), d.panel, buttons, w.muted("视频投屏 · 点击／拖动操作设备"), d.statusLabel)
 	box := w.inset(content, 12, w.colors().sidebar)
 	box.GetWidget().MinWidth = w.px(320)
 	box.GetWidget().LayoutData = widget.GridLayoutData{MaxWidth: w.px(320)}
@@ -227,6 +234,7 @@ func (w *app) updateDeviceChrome() {
 	}
 	d.screenshot.GetWidget().Disabled = d.busy || d.saving
 	d.copyScreenshot.GetWidget().Disabled = d.busy || d.saving
+	w.updateDeviceRecordingChrome(d)
 	for _, button := range d.keys {
 		button.GetWidget().Disabled = !d.ready || d.paused || d.failed || d.busy
 	}
@@ -384,6 +392,7 @@ func (w *app) updateDevicePreview(allowInput bool) {
 	if d == nil {
 		return
 	}
+	w.pollDeviceRecording(d)
 	if d.client != w.client {
 		w.closeDevicePreview()
 		return

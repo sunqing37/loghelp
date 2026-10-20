@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 // ScreenFrame retains the original PNG for saving without display scaling.
@@ -35,12 +37,26 @@ func (a *ADB) CaptureScreen(ctx context.Context, serial string) (*ScreenFrame, e
 	if len(data) > limit {
 		return nil, fmt.Errorf("设备 %s 截图超过 32 MiB", serial)
 	}
+	// exec-out may merge device-side warnings into the binary output. Only
+	// discard a bounded, printable text prefix; the PNG still undergoes full
+	// header, dimensions and image validation below.
+	const signature = "\x89PNG\r\n\x1a\n"
+	const prefixLimit = 16 << 10
+	start := bytes.Index(data[:min(len(data), prefixLimit+len(signature))], []byte(signature))
+	if start > 0 && screenshotOutputIsText(data[:start]) {
+		data = data[start:]
+	}
 	config, err := png.DecodeConfig(bytes.NewReader(data))
 	if err != nil {
-		return nil, fmt.Errorf("设备 %s 未返回有效 PNG：%w；%s", serial, err, strings.TrimSpace(stderr.b.String()))
-	}
-	if config.Width <= 0 || config.Height <= 0 || config.Width > 16384 || config.Height > 16384 || int64(config.Width)*int64(config.Height) > 20_000_000 {
-		return nil, fmt.Errorf("设备 %s 截图尺寸不支持：%d × %d", serial, config.Width, config.Height)
+		detail := strings.TrimSpace(stderr.b.String())
+		if len(data) <= prefixLimit && screenshotOutputIsText(data) {
+			hint := []rune(strings.TrimSpace(string(data)))
+			if len(hint) > 512 {
+				hint = append(hint[:512], '…')
+			}
+			detail = strings.TrimSpace(detail + "\n" + string(hint))
+		}
+		return nil, fmt.Errorf("设备 %s 未返回有效 PNG：%w；%s", serial, err, detail)
 	}
 	if config.Width <= 0 || config.Height <= 0 || config.Width > 16384 || config.Height > 16384 || int64(config.Width)*int64(config.Height) > 20_000_000 {
 		return nil, fmt.Errorf("设备 %s 截图尺寸不支持：%d × %d", serial, config.Width, config.Height)
@@ -50,6 +66,12 @@ func (a *ADB) CaptureScreen(ctx context.Context, serial string) (*ScreenFrame, e
 		return nil, fmt.Errorf("设备 %s 截图解码失败：%w", serial, err)
 	}
 	return &ScreenFrame{PNG: data, Image: img, CapturedAt: time.Now()}, nil
+}
+
+func screenshotOutputIsText(data []byte) bool {
+	return utf8.Valid(data) && bytes.IndexFunc(data, func(r rune) bool {
+		return !unicode.IsPrint(r) && r != '\n' && r != '\r' && r != '\t'
+	}) == -1
 }
 
 func (a *ADB) screenInput(ctx context.Context, serial string, args ...string) error {

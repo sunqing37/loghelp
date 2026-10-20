@@ -31,6 +31,7 @@ type ScreenRecordingState struct {
 	StartedAt time.Time
 	Duration  time.Duration
 	Stopping  bool
+	Switching bool
 	Path      string // nonempty only when a playable recording was saved
 	Err       error
 }
@@ -136,6 +137,7 @@ func (r *ScreenRecording) run() {
 	defer r.mu.Unlock()
 	r.stopLocked(nil)
 	r.state.Err = errors.Join(r.state.Err, err)
+	r.state.Switching = false
 	r.finished = true
 	// Release any remaining packets after an early mux/write failure.
 	for range r.packets {
@@ -205,6 +207,10 @@ func (r *ScreenRecording) consume(mux *recordingMux) error {
 			if mux.pending == nil {
 				return fmt.Errorf("等待视频关键帧超时，请重连投屏后重试")
 			}
+			if mux.waitingKey {
+				r.stop(fmt.Errorf("切换屏幕后等待视频关键帧超时，已结束录制"))
+				return nil
+			}
 		case packet, ok := <-r.packets:
 			if !ok {
 				return nil
@@ -212,60 +218,86 @@ func (r *ScreenRecording) consume(mux *recordingMux) error {
 			r.mu.Lock()
 			r.queuedBytes -= len(packet.data)
 			r.mu.Unlock()
+			wasWaiting := mux.waitingKey
 			if err := mux.add(packet); err != nil {
-				// A resolution/config change still leaves the previous MP4 valid.
+				// Invalid codec/timeline data still leaves the previous MP4 valid.
 				if errors.Is(err, errRecordingEnded) {
 					r.stop(err)
 					return nil
 				}
 				return err
 			}
-			if mux.pending != nil && !packet.config {
-				r.mu.Lock()
-				if r.state.StartedAt.IsZero() {
-					r.state.StartedAt = packet.at
-				}
-				r.state.Duration = time.Duration(packet.pts-mux.firstPTS) * time.Microsecond
-				r.mu.Unlock()
+			if mux.waitingKey && !wasWaiting {
+				timer.Reset(15 * time.Second)
+			} else if !mux.waitingKey && mux.pending != nil {
+				timer.Stop()
 			}
+			r.mu.Lock()
+			r.state.Switching = mux.waitingKey && mux.pending != nil
+			if mux.pending != nil {
+				if r.state.StartedAt.IsZero() {
+					r.state.StartedAt = mux.pending.at
+				}
+				r.state.Duration = time.Duration(mux.pending.pts) * time.Microsecond
+			}
+			r.mu.Unlock()
 		}
 	}
 }
 
 // Each frame is one fragment: frame data is bounded and already-written fragments
-// survive a stream interruption. scrcpy's low-latency encoder has no B frames;
-// reject a non-monotonic timeline rather than generate incorrect decode times.
+// survive a stream interruption. avc3 carries parameter sets in each keyframe,
+// so resolution changes and seeking do not require rewriting the MP4 header.
+// scrcpy's low-latency encoder has no B frames. Only a codec configuration
+// boundary permits rebasing timestamps after an encoder restart.
 type recordingMux struct {
-	file     *os.File
-	init     *mp4.InitSegment
-	config   []byte
-	pending  *recordingPacket
-	firstPTS uint64
-	duration uint64
-	samples  uint32
-	index    *mp4.TfraBox
+	file                *os.File
+	init                *mp4.InitSegment
+	config              []byte
+	sps, pps            [][]byte
+	pending             *recordingPacket
+	sourcePTS           uint64
+	lastDelta           uint64
+	waitingKey          bool
+	allowTimestampReset bool
+	duration            uint64
+	samples             uint32
+	index               *mp4.TfraBox
 }
 
 func (m *recordingMux) add(packet recordingPacket) error {
 	if packet.config {
-		if m.init != nil && !bytes.Equal(m.config, packet.data) {
-			return fmt.Errorf("%w：设备画面参数已变化，请重新开始录屏", errRecordingEnded)
+		m.allowTimestampReset = true
+		if bytes.Equal(m.config, packet.data) {
+			return nil
+		}
+		sps := avc.ExtractNalusOfTypeFromByteStream(avc.NALU_SPS, packet.data, false)
+		pps := avc.ExtractNalusOfTypeFromByteStream(avc.NALU_PPS, packet.data, false)
+		if len(sps) == 0 || len(pps) == 0 {
+			return fmt.Errorf("%w：缺少 H.264 视频配置，请重连投屏后重试", errRecordingEnded)
+		}
+		if _, err := avc.CreateAVCDecConfRec(sps, pps, true); err != nil {
+			return fmt.Errorf("%w：解析录屏视频配置：%v", errRecordingEnded, err)
 		}
 		m.config = packet.data
+		m.sps, m.pps = sps, pps
+		m.waitingKey = true
 		return nil
 	}
+	if m.waitingKey && !packet.key {
+		return nil
+	}
+	sourcePTS := packet.pts
 	if m.pending == nil {
 		if !packet.key {
 			return nil
 		}
-		sps := avc.ExtractNalusOfTypeFromByteStream(avc.NALU_SPS, m.config, false)
-		pps := avc.ExtractNalusOfTypeFromByteStream(avc.NALU_PPS, m.config, false)
-		if len(sps) == 0 || len(pps) == 0 {
+		if len(m.sps) == 0 || len(m.pps) == 0 {
 			return fmt.Errorf("缺少 H.264 视频配置，请重连投屏后重试")
 		}
 		m.init = mp4.CreateEmptyInit()
 		track := m.init.AddEmptyTrack(1000000, "video", "und")
-		if err := track.SetAVCDescriptor("avc1", sps, pps, true); err != nil {
+		if err := track.SetAVCDescriptor("avc3", m.sps, m.pps, true); err != nil {
 			return fmt.Errorf("解析录屏视频配置：%w", err)
 		}
 		// Reserve 64-bit durations before writing; final rewrite has identical size.
@@ -273,18 +305,44 @@ func (m *recordingMux) add(packet recordingPacket) error {
 		if err := m.init.Encode(m.file); err != nil {
 			return fmt.Errorf("写入 MP4 文件头：%w", err)
 		}
-		m.firstPTS = packet.pts
+		packet.pts = 0
 	} else {
-		if packet.pts <= m.pending.pts || packet.pts-m.pending.pts > uint64(^uint32(0)) {
-			return fmt.Errorf("%w：设备视频时间戳异常", errRecordingEnded)
+		var delta uint64
+		if sourcePTS <= m.sourcePTS {
+			if !m.allowTimestampReset {
+				return fmt.Errorf("%w：设备视频时间戳异常", errRecordingEnded)
+			}
+			if !packet.key {
+				m.waitingKey = true
+				return nil
+			}
+			// Keep one monotonic MP4 timeline even if a restarted encoder starts
+			// counting from zero. Preserve the real switching gap in that case.
+			delta = uint64(max(int64(1), packet.at.Sub(m.pending.at).Microseconds(), int64(m.lastDelta)))
+		} else {
+			delta = sourcePTS - m.sourcePTS
 		}
-		if err := m.writePending(uint32(packet.pts - m.pending.pts)); err != nil {
+		if delta > uint64(^uint32(0)) {
+			return fmt.Errorf("%w：设备视频时间间隔过长", errRecordingEnded)
+		}
+		if err := m.writePending(uint32(delta)); err != nil {
 			return err
 		}
+		packet.pts = m.pending.pts + delta
+		m.lastDelta = delta
+	}
+	if packet.key {
+		// Include the current SPS/PPS at every random-access point, including
+		// after switching back to a previously used screen configuration.
+		payload := make([]byte, 0, len(m.config)+len(packet.data))
+		payload = append(payload, m.config...)
+		packet.data = append(payload, packet.data...)
 	}
 	// Conversion may mutate packet.data, which is private to this recorder.
 	packet.data = avc.ConvertByteStreamToNaluSample(packet.data)
 	m.pending = &packet
+	m.sourcePTS = sourcePTS
+	m.waitingKey, m.allowTimestampReset = false, false
 	return nil
 }
 
@@ -298,7 +356,7 @@ func (m *recordingMux) writePending(duration uint32) error {
 	if p.key {
 		flags = mp4.SyncSampleFlags
 	}
-	decodeTime := p.pts - m.firstPTS
+	decodeTime := p.pts
 	fragment.AddFullSample(mp4.FullSample{Sample: mp4.Sample{Flags: flags, Dur: duration, Size: uint32(len(p.data))}, DecodeTime: decodeTime, Data: p.data})
 	offset, err := m.file.Seek(0, io.SeekCurrent)
 	if err != nil {

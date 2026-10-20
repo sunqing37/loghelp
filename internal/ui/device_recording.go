@@ -105,6 +105,9 @@ func deviceRecordingLabel(recording *core.ScreenRecording) string {
 		return "等待关键帧…"
 	default:
 		seconds := int(time.Since(state.StartedAt).Seconds())
+		if state.Switching {
+			return fmt.Sprintf("切屏中 %02d:%02d", seconds/60, seconds%60)
+		}
 		return fmt.Sprintf("录制中 %02d:%02d", seconds/60, seconds%60)
 	}
 }

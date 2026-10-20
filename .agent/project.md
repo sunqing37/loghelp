@@ -8,7 +8,7 @@
 | 采集、查询、录制、Shell、更新 | `internal/core/` |
 | 内存诊断 | `internal/diagnostics/`、`docs/memory-profiling.md` |
 | 本地运行日志、崩溃与反馈 | `internal/support/`、`internal/ui/feedback.go`；不自动上传，说明见根 README |
-| 产品版本 | 根 `VERSION`，当前 `0.0.2` |
+| 产品版本 | 根 `VERSION`，当前 `0.0.3` |
 | 发布修订 | 根 `REVISION`，非负整数，同版本发布新包必须递增 |
 | 版本嵌入 | 根 `version.go`，应用版本与修订均来自根文件 |
 | 构建 | `scripts/build.py` / `scripts/build.ps1` |

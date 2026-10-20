@@ -4,9 +4,9 @@
 
 ## 下载
 
-当前版本 **0.0.2**（`VERSION=0.0.2`、`REVISION=0`）。在 [GitHub Releases](https://github.com/sunqing37/loghelp/releases/tag/v0.0.2) 下载与系统/CPU 匹配的便携包：Windows、macOS（文件名使用 `darwin`）、Linux 各提供 amd64 和 arm64。Windows 解压运行 `loghelp.exe`，macOS/Linux 解压运行 `./loghelp`；若解压工具未保留权限，先执行 `chmod +x loghelp`。ADB 需另行准备，可在设置中选择其位置。附件 `SHA256SUMS.txt` 提供六个 ZIP 的 SHA-256。
+当前版本 **0.0.3**（`VERSION=0.0.3`、`REVISION=0`）。在 [GitHub Releases](https://github.com/sunqing37/loghelp/releases/tag/v0.0.3) 下载与系统/CPU 匹配的便携包：Windows、macOS（文件名使用 `darwin`）、Linux 各提供 amd64 和 arm64；Windows 另提供 x64、ARM64 的 Setup 安装包。Windows 解压运行 `loghelp.exe`，macOS/Linux 解压运行 `./loghelp`；若解压工具未保留权限，先执行 `chmod +x loghelp`。ADB 需另行准备，可在设置中选择其位置。附件 `SHA256SUMS.txt` 提供六个 ZIP 和两个 Setup 的 SHA-256。
 
-见 [0.0.2 发布说明](docs/releases/0.0.2.md)、[投屏运行依赖](docs/mirror-runtime.md) 和 [更新记录](CHANGELOG.md)。Windows amd64 内嵌投屏解码库；其余平台投屏需安装匹配架构的 FFmpeg 或配置 `LOGHELP_FFMPEG`。Linux 图片复制另需 wl-clipboard 或 xclip，系统文件对话框另需 zenity/matedialog/qarma。
+见 [0.0.3 发布说明](docs/releases/0.0.3.md)、[投屏运行依赖](docs/mirror-runtime.md) 和 [更新记录](CHANGELOG.md)。Windows amd64 内嵌投屏解码库；其余平台投屏需安装匹配架构的 FFmpeg 或配置 `LOGHELP_FFMPEG`。Linux 图片复制另需 wl-clipboard 或 xclip，系统文件对话框另需 zenity/matedialog/qarma。
 
 源码构建时会将 `VERSION` 和 `REVISION` 嵌入程序，版本及修订显示在窗口标题、主界面顶部和设置页。修改任一文件后，构建脚本会识别变更并重新编译。检查更新先比较产品版本，同版本再按整数比较修订号，选择本平台最高修订附件；历史原始包没有修订后缀，视为 `r0`。
 

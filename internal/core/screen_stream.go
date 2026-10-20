@@ -48,14 +48,31 @@ type ScreenStream struct {
 	pixels      sync.Pool
 	decoderLog  *streamLog
 	videoConfig []byte
+	audioConfig []byte
+	options     ScreenRecordingOptions
 	recording   *ScreenRecording
 }
 
 func StartScreenStream(parent context.Context, adb *ADB, serial string) *ScreenStream {
+	return StartScreenStreamWithOptions(parent, adb, serial, ScreenRecordingOptions{})
+}
+
+func StartScreenStreamWithOptions(parent context.Context, adb *ADB, serial string, options ScreenRecordingOptions, previous ...*ScreenStream) *ScreenStream {
 	ctx, cancel := context.WithCancel(parent)
-	s := &ScreenStream{ctx: ctx, cancel: cancel, done: make(chan struct{}), control: make(chan []byte, 64)}
+	s := &ScreenStream{ctx: ctx, cancel: cancel, done: make(chan struct{}), control: make(chan []byte, 64), options: options}
 	go func() {
-		err := s.run(adb, serial)
+		// Finish the previous server (including its setting restoration) before
+		// opening another recording session on the same device.
+		if len(previous) != 0 && previous[0] != nil {
+			select {
+			case <-previous[0].Done():
+			case <-ctx.Done():
+			}
+		}
+		var err error
+		if ctx.Err() == nil {
+			err = s.run(adb, serial)
+		}
 		s.mu.Lock()
 		if parent.Err() == nil && ctx.Err() == nil {
 			s.err = err
@@ -255,8 +272,18 @@ func (s *ScreenStream) run(adb *ADB, serial string) error {
 	remote := "/data/local/tmp/loghelp-scrcpy-" + id + ".jar"
 	setup, setupCancel := context.WithTimeout(s.ctx, 20*time.Second)
 	defer setupCancel()
-	if _, err := adb.Run(setup, serial, "push", filepath.Join(directory, "scrcpy-server"), remote); err != nil {
-		return fmt.Errorf("安装临时投屏服务：%w", err)
+	if s.options.SystemAudio {
+		version, err := adb.Run(setup, serial, "shell", "getprop", "ro.build.version.sdk")
+		if err != nil {
+			return fmt.Errorf("检查设备内录能力：%w", err)
+		}
+		sdk, err := strconv.Atoi(strings.TrimSpace(version))
+		if err != nil || sdk < 30 {
+			return fmt.Errorf("系统声音录制需要 Android 11 或更高版本，请关闭「录制系统声音」后重试")
+		}
+		if s.options.KeepDevicePlayback && sdk < 33 {
+			return fmt.Errorf("保留设备播放需要 Android 13 或更高版本；可关闭此选项后重试，录制时设备将不外放")
+		}
 	}
 	// Only this session's temporary file and forwarding rule are removed.
 	defer func() {
@@ -264,6 +291,9 @@ func (s *ScreenStream) run(adb *ADB, serial string) error {
 		defer cancel()
 		adb.Run(ctx, serial, "shell", "rm", "-f", remote)
 	}()
+	if _, err := adb.Run(setup, serial, "push", filepath.Join(directory, "scrcpy-server"), remote); err != nil {
+		return fmt.Errorf("安装临时投屏服务：%w", err)
+	}
 	portText, err := adb.Run(setup, serial, "forward", "tcp:0", "localabstract:scrcpy_"+id)
 	if err != nil {
 		return fmt.Errorf("创建投屏连接：%w", err)
@@ -279,8 +309,17 @@ func (s *ScreenStream) run(adb *ADB, serial string) error {
 	}()
 	serverContext, serverCancel := context.WithCancel(s.ctx)
 	defer serverCancel()
-	command := adb.Command(serverContext, serial, "shell", "CLASSPATH="+remote, "app_process", "/", "com.genymobile.scrcpy.Server", mirrorVersion,
-		"scid="+id, "tunnel_forward=true", "audio=false", "control=true", "max_size=1280", "max_fps=60", "video_bit_rate=8000000", "video_codec_options=i-frame-interval=1", "send_device_meta=false", "clipboard_autosync=false", "power_on=false")
+	arguments := []string{"shell", "CLASSPATH=" + remote, "app_process", "/", "com.genymobile.scrcpy.Server", mirrorVersion,
+		"scid=" + id, "tunnel_forward=true", "audio=" + strconv.FormatBool(s.options.SystemAudio), "show_touches=" + strconv.FormatBool(s.options.ShowTouches), "control=true", "max_size=1280", "max_fps=60", "video_bit_rate=8000000", "video_codec_options=i-frame-interval=1", "send_device_meta=false", "clipboard_autosync=false", "power_on=false"}
+	if s.options.SystemAudio {
+		arguments = append(arguments, "audio_codec=aac", "audio_bit_rate=128000")
+		if s.options.KeepDevicePlayback {
+			arguments = append(arguments, "audio_source=playback", "audio_dup=true")
+		} else {
+			arguments = append(arguments, "audio_source=output")
+		}
+	}
+	command := adb.Command(serverContext, serial, arguments...)
 	log := &streamLog{buffer: limitedBuffer{limit: 16 << 10}}
 	command.Stdout, command.Stderr = log, log
 	if err := command.Start(); err != nil {
@@ -305,6 +344,16 @@ func (s *ScreenStream) run(adb *ADB, serial string) error {
 	defer video.Close()
 	stopVideo := context.AfterFunc(s.ctx, func() { video.Close() })
 	defer stopVideo()
+	var audio net.Conn
+	if s.options.SystemAudio {
+		audio, err = (&net.Dialer{Timeout: 5 * time.Second}).DialContext(setup, "tcp", address)
+		if err != nil {
+			return fmt.Errorf("连接系统声音：%w", err)
+		}
+		defer audio.Close()
+		stopAudio := context.AfterFunc(s.ctx, func() { audio.Close() })
+		defer stopAudio()
+	}
 	control, err := (&net.Dialer{Timeout: 5 * time.Second}).DialContext(setup, "tcp", address)
 	if err != nil {
 		return fmt.Errorf("连接投屏控制：%w", err)
@@ -322,6 +371,23 @@ func (s *ScreenStream) run(adb *ADB, serial string) error {
 		return fmt.Errorf("设备未返回 H.264 视频")
 	}
 	video.SetReadDeadline(time.Time{})
+	if audio != nil {
+		config, err := readScreenAudioConfig(audio)
+		if err != nil {
+			return fmt.Errorf("准备系统声音失败：%w；Android 11 请先解锁屏幕；%s", err, log.text())
+		}
+		s.mu.Lock()
+		s.audioConfig = config
+		s.mu.Unlock()
+		stopRead, readDone := make(chan struct{}), make(chan struct{})
+		go func() { defer close(readDone); s.readScreenAudio(audio, stopRead) }()
+		defer func() { close(stopRead); audio.Close(); <-readDone }()
+	}
+	if s.options.ShowTouches {
+		if err := waitScreenTouches(s.ctx, adb, serial); err != nil {
+			return err
+		}
+	}
 	s.mu.Lock()
 	s.ready = true
 	s.mu.Unlock()

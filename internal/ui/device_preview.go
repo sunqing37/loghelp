@@ -25,6 +25,9 @@ type devicePreview struct {
 	stream                                       *core.ScreenStream
 	recording                                    *core.ScreenRecording
 	record                                       *widget.Button
+	recordSettings                               *widget.Button
+	recordPreparing                              bool
+	recordPreparationCancel                      context.CancelFunc
 	recordLabel                                  *widget.Text
 	recordStatus                                 string
 	texture                                      *ebiten.Image
@@ -115,6 +118,7 @@ func (w *app) cancelDeviceTouch() {
 func (w *app) disposeDevicePreview() {
 	if d := w.preview; d != nil {
 		w.cancelDeviceTouch()
+		w.cancelPreparingDeviceRecording(d)
 		d.cancel()
 		if d.stream != nil {
 			d.stream.Close()
@@ -160,17 +164,10 @@ func (w *app) reconnectDevicePreview() {
 		return
 	}
 	w.cancelDeviceTouch()
-	d.stream.Close()
-	d.stream = core.StartScreenStream(d.ctx, d.client, d.serial)
-	w.previewStreams = append(w.previewStreams, d.stream)
-	d.ready, d.failed, d.paused = false, false, false
-	d.statsAt, d.statsFrames = time.Now(), 0
+	w.cancelPreparingDeviceRecording(d)
+	w.replaceDevicePreviewStream(d, core.ScreenRecordingOptions{})
+	d.paused = false
 	d.status, d.notice = "正在重新连接视频投屏…", ""
-	if d.texture != nil {
-		d.texture.Dispose()
-		d.texture = nil
-	}
-	d.frameSize = image.Point{}
 	w.updateDeviceChrome()
 }
 
@@ -185,6 +182,7 @@ func (w *app) devicePanel() *widget.Container {
 	d.screenshot = w.action("保存截图", "primary", func() { w.captureDeviceScreenshot(false) })
 	d.copyScreenshot = w.action("复制截图", "quiet", func() { w.captureDeviceScreenshot(true) })
 	d.record = w.action("开始录屏", "primary", w.toggleDeviceRecording)
+	d.recordSettings = w.action("录屏设置", "quiet", w.deviceRecordingSettings)
 	d.recordLabel = w.muted("")
 	d.recordLabel.MaxWidth = float64(w.px(288))
 	d.panel = widget.NewContainer(widget.ContainerOpts.WidgetOpts(widget.WidgetOpts.MinSize(w.px(160), w.px(180))))
@@ -202,8 +200,8 @@ func (w *app) devicePanel() *widget.Container {
 	d.statusLabel = w.muted(d.status)
 	d.statusLabel.MaxWidth = float64(w.px(288))
 	d.statusLabel.GetWidget().MinHeight = w.px(64)
-	content := widget.NewContainer(widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(1), widget.GridLayoutOpts.Stretch([]bool{true}, []bool{false, false, false, false, false, true, false, false, false}), widget.GridLayoutOpts.Spacing(0, w.px(10)))))
-	content.AddChild(header, serial, w.row(d.pause, d.reconnect), w.row(d.screenshot, d.copyScreenshot), w.row(d.record, d.recordLabel), d.panel, buttons, w.muted("视频投屏 · 点击／拖动操作设备"), d.statusLabel)
+	content := widget.NewContainer(widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(1), widget.GridLayoutOpts.Stretch([]bool{true}, []bool{false, false, false, false, false, false, true, false, false, false}), widget.GridLayoutOpts.Spacing(0, w.px(10)))))
+	content.AddChild(header, serial, w.row(d.pause, d.reconnect), w.row(d.screenshot, d.copyScreenshot), w.row(d.record, d.recordSettings), d.recordLabel, d.panel, buttons, w.muted("视频投屏 · 点击／拖动操作设备"), d.statusLabel)
 	box := w.inset(content, 12, w.colors().sidebar)
 	box.GetWidget().MinWidth = w.px(320)
 	box.GetWidget().LayoutData = widget.GridLayoutData{MaxWidth: w.px(320)}

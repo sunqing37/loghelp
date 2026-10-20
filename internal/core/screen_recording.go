@@ -25,6 +25,7 @@ type ScreenRecording struct {
 	state       ScreenRecordingState
 	stoppedAt   time.Time
 	target      string
+	audioConfig []byte
 }
 
 type ScreenRecordingState struct {
@@ -40,6 +41,7 @@ type recordingPacket struct {
 	data        []byte
 	pts         uint64 // microseconds, with scrcpy flag bits removed
 	config, key bool
+	audio       bool
 	at          time.Time
 }
 
@@ -59,8 +61,24 @@ func (s *ScreenStream) StartRecording(path string) (*ScreenRecording, error) {
 		}
 	}
 	r := &ScreenRecording{packets: make(chan recordingPacket, 240), done: make(chan struct{}), target: path}
+	if s.options.SystemAudio {
+		if err := validateScreenAAC(s.audioConfig); err != nil {
+			return nil, err
+		}
+		r.audioConfig = bytes.Clone(s.audioConfig)
+	}
 	if len(s.videoConfig) != 0 {
 		r.offer(s.videoConfig, 0, true, false)
+	}
+	// Static screens may not produce another natural keyframe promptly, even
+	// with a short encoder interval. Reset only the video encoder to start a
+	// fresh random-access frame; the audio connection and clock stay active.
+	if s.control != nil {
+		select {
+		case s.control <- []byte{17}: // scrcpy 3.3.4 RESET_VIDEO
+		default:
+			return nil, fmt.Errorf("投屏控制繁忙，无法准备录屏关键帧，请稍后重试")
+		}
 	}
 	s.recording = r
 	go r.run()
@@ -96,17 +114,22 @@ func (r *ScreenRecording) stopLocked(err error) {
 }
 
 func (r *ScreenRecording) offer(data []byte, pts uint64, config, key bool) {
+	r.offerPacket(recordingPacket{data: data, pts: pts, config: config, key: key, at: time.Now()})
+}
+
+func (r *ScreenRecording) offerPacket(packet recordingPacket) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.state.Stopping {
 		return
 	}
-	if len(r.packets) == cap(r.packets) || r.queuedBytes+len(data) > 32<<20 {
+	if len(r.packets) == cap(r.packets) || r.queuedBytes+len(packet.data) > 32<<20 {
 		r.stopLocked(fmt.Errorf("磁盘写入跟不上录屏，已停止录制；请更换保存位置后重试"))
 		return
 	}
-	r.queuedBytes += len(data)
-	r.packets <- recordingPacket{data: bytes.Clone(data), pts: pts, config: config, key: key, at: time.Now()}
+	r.queuedBytes += len(packet.data)
+	packet.data = bytes.Clone(packet.data)
+	r.packets <- packet
 }
 
 func (s *ScreenStream) recordPacket(data []byte, flags uint64) {
@@ -157,8 +180,11 @@ func (r *ScreenRecording) save() error {
 			file.Close()
 		}
 	}()
-	mux := recordingMux{file: file, index: &mp4.TfraBox{Version: 1, TrackID: 1}}
+	mux := recordingMux{file: file, index: &mp4.TfraBox{Version: 1, TrackID: 1}, audioConfig: r.audioConfig, audioIndex: &mp4.TfraBox{Version: 1, TrackID: 2}}
 	err = r.consume(&mux)
+	if err == nil && mux.pending != nil && len(r.audioConfig) != 0 && mux.audioSamples == 0 {
+		r.stop(fmt.Errorf("未收到可保存的系统声音数据"))
+	}
 	if err == nil {
 		err = mux.finish(r.stopTime())
 	}
@@ -263,9 +289,18 @@ type recordingMux struct {
 	duration            uint64
 	samples             uint32
 	index               *mp4.TfraBox
+	audioConfig         []byte
+	audioIndex          *mp4.TfraBox
+	audioSamples        uint64
+	audioEnd            uint64
+	originPTS           uint64
+	sequence            uint32
 }
 
 func (m *recordingMux) add(packet recordingPacket) error {
+	if packet.audio {
+		return m.addAudio(packet)
+	}
 	if packet.config {
 		m.allowTimestampReset = true
 		if bytes.Equal(m.config, packet.data) {
@@ -302,10 +337,16 @@ func (m *recordingMux) add(packet recordingPacket) error {
 		}
 		// Reserve 64-bit durations before writing; final rewrite has identical size.
 		m.init.Moov.Mvhd.Version, track.Tkhd.Version, track.Mdia.Mdhd.Version = 1, 1, 1
+		if len(m.audioConfig) != 0 {
+			audioTrack := m.init.AddEmptyTrack(48000, "audio", "und")
+			audioTrack.Mdia.Minf.Stbl.Stsd.AddChild(mp4.CreateAudioSampleEntryBox("mp4a", 2, 16, 48000, mp4.CreateEsdsBox(m.audioConfig)))
+			audioTrack.Tkhd.Version, audioTrack.Mdia.Mdhd.Version = 1, 1
+		}
 		if err := m.init.Encode(m.file); err != nil {
 			return fmt.Errorf("写入 MP4 文件头：%w", err)
 		}
 		packet.pts = 0
+		m.originPTS = sourcePTS
 	} else {
 		var delta uint64
 		if sourcePTS <= m.sourcePTS {
@@ -348,7 +389,7 @@ func (m *recordingMux) add(packet recordingPacket) error {
 
 func (m *recordingMux) writePending(duration uint32) error {
 	p := m.pending
-	fragment, err := mp4.CreateFragment(m.samples+1, 1)
+	fragment, err := mp4.CreateFragment(m.sequence+1, 1)
 	if err != nil {
 		return err
 	}
@@ -369,7 +410,43 @@ func (m *recordingMux) writePending(duration uint32) error {
 		m.index.Entries = append(m.index.Entries, mp4.TfraEntry{Time: decodeTime, MoofOffset: uint64(offset), TrafNumber: 1, TrunNumber: 1, SampleNumber: 1})
 	}
 	m.samples++
+	m.sequence++
 	m.duration = decodeTime + uint64(duration)
+	return nil
+}
+
+func (m *recordingMux) addAudio(packet recordingPacket) error {
+	if packet.config {
+		if !bytes.Equal(m.audioConfig, packet.data) {
+			return fmt.Errorf("%w：设备音频配置发生变化", errRecordingEnded)
+		}
+		return nil
+	}
+	if m.pending == nil || len(m.audioConfig) == 0 || packet.pts < m.originPTS {
+		return nil
+	}
+	// Both streams use the Android monotonic clock. Keep the original audio
+	// offset from the first recorded video frame, including a late audio start.
+	decodeTime := (packet.pts - m.originPTS) * 48000 / 1000000
+	decodeTime = max(decodeTime, m.audioEnd)
+	fragment, err := mp4.CreateFragment(m.sequence+1, 2)
+	if err != nil {
+		return err
+	}
+	fragment.AddFullSample(mp4.FullSample{Sample: mp4.Sample{Flags: mp4.SyncSampleFlags, Dur: 1024, Size: uint32(len(packet.data))}, DecodeTime: decodeTime, Data: packet.data})
+	offset, err := m.file.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return err
+	}
+	if err := fragment.Encode(m.file); err != nil {
+		return fmt.Errorf("写入系统声音：%w", err)
+	}
+	if len(m.audioIndex.Entries) == 0 || decodeTime-m.audioIndex.Entries[len(m.audioIndex.Entries)-1].Time >= 48000 {
+		m.audioIndex.Entries = append(m.audioIndex.Entries, mp4.TfraEntry{Time: decodeTime, MoofOffset: uint64(offset), TrafNumber: 1, TrunNumber: 1, SampleNumber: 1})
+	}
+	m.audioEnd = decodeTime + 1024
+	m.audioSamples++
+	m.sequence++
 	return nil
 }
 
@@ -385,6 +462,11 @@ func (m *recordingMux) finish(stoppedAt time.Time) error {
 	if err := mfra.AddChild(m.index); err != nil {
 		return err
 	}
+	if m.audioSamples != 0 {
+		if err := mfra.AddChild(m.audioIndex); err != nil {
+			return err
+		}
+	}
 	footer := &mp4.MfroBox{}
 	if err := mfra.AddChild(footer); err != nil {
 		return err
@@ -397,6 +479,12 @@ func (m *recordingMux) finish(stoppedAt time.Time) error {
 	m.init.Moov.Mvhd.Duration = movieDuration
 	m.init.Moov.Trak.Tkhd.Duration = movieDuration
 	m.init.Moov.Trak.Mdia.Mdhd.Duration = m.duration
+	if len(m.init.Moov.Traks) > 1 {
+		audioTrack := m.init.Moov.Traks[1]
+		audioTrack.Mdia.Mdhd.Duration = m.audioEnd
+		audioTrack.Tkhd.Duration = m.audioEnd * uint64(m.init.Moov.Mvhd.Timescale) / 48000
+		m.init.Moov.Mvhd.Duration = max(movieDuration, audioTrack.Tkhd.Duration)
+	}
 	if _, err := m.file.Seek(0, io.SeekStart); err != nil {
 		return err
 	}

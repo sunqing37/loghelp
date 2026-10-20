@@ -11,7 +11,7 @@ import (
 // Local UI profiling fixtures: no ADB commands, clipboard changes or exports.
 func (w *app) profileInvestigationScene() {
 	scene := os.Getenv("LOGHELP_PROFILE_SCENE")
-	if scene != "json-inspector" && scene != "log-overview" && scene != "log-events" && scene != "issue-bundle" && scene != "workspace-plans" {
+	if scene != "json-inspector" && scene != "log-overview" && scene != "log-events" && scene != "issue-bundle" && scene != "workspace-plans" && scene != "recording-settings" {
 		return
 	}
 	p := w.active()
@@ -39,5 +39,7 @@ func (w *app) profileInvestigationScene() {
 		w.issueBundle()
 	case "workspace-plans":
 		w.workspaces()
+	case "recording-settings":
+		w.showDeviceRecordingSettings()
 	}
 }

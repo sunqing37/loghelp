@@ -21,34 +21,35 @@ type TabState struct {
 	MergeLines    bool   `json:"merge_lines,omitempty"`
 }
 type Config struct {
-	RecentFiles      []string          `json:"recent_files,omitempty"`
-	Workspaces       []Workspace       `json:"workspaces,omitempty"`
-	Bookmarks        []Bookmark        `json:"bookmarks,omitempty"`
-	Version          int               `json:"version"`
-	ADB              string            `json:"adb,omitempty"`
-	UpdateProxy      string            `json:"update_proxy,omitempty"`
-	Directory        string            `json:"directory,omitempty"`
-	Theme            string            `json:"theme"`
-	FontSize         float32           `json:"font_size"`
-	Wrap             bool              `json:"wrap"`
-	DetailHeight     int               `json:"detail_height"`
-	Columns          []string          `json:"columns"`
-	ColumnWidths     map[string]int    `json:"column_widths,omitempty"`
-	History          []string          `json:"history,omitempty"`
-	Favorites        map[string]string `json:"favorites,omitempty"`
-	ShellHistory     []string          `json:"shell_history,omitempty"`
-	SaveShellHistory bool              `json:"save_shell_history"`
-	Tabs             []TabState        `json:"tabs,omitempty"`
-	CacheCount       int               `json:"cache_count"`
-	CacheBytes       int64             `json:"cache_bytes"`
-	SegmentBytes     int64             `json:"segment_bytes"`
-	SegmentMinutes   int               `json:"segment_minutes"`
-	QuotaBytes       int64             `json:"quota_bytes"`
-	RetentionDays    int               `json:"retention_days"`
-	Cleanup          bool              `json:"cleanup"`
-	Shortcuts        map[string]string `json:"shortcuts,omitempty"`
-	ContextBefore    int               `json:"context_before"`
-	ContextAfter     int               `json:"context_after"`
+	ScreenRecording  ScreenRecordingOptions `json:"screen_recording"`
+	RecentFiles      []string               `json:"recent_files,omitempty"`
+	Workspaces       []Workspace            `json:"workspaces,omitempty"`
+	Bookmarks        []Bookmark             `json:"bookmarks,omitempty"`
+	Version          int                    `json:"version"`
+	ADB              string                 `json:"adb,omitempty"`
+	UpdateProxy      string                 `json:"update_proxy,omitempty"`
+	Directory        string                 `json:"directory,omitempty"`
+	Theme            string                 `json:"theme"`
+	FontSize         float32                `json:"font_size"`
+	Wrap             bool                   `json:"wrap"`
+	DetailHeight     int                    `json:"detail_height"`
+	Columns          []string               `json:"columns"`
+	ColumnWidths     map[string]int         `json:"column_widths,omitempty"`
+	History          []string               `json:"history,omitempty"`
+	Favorites        map[string]string      `json:"favorites,omitempty"`
+	ShellHistory     []string               `json:"shell_history,omitempty"`
+	SaveShellHistory bool                   `json:"save_shell_history"`
+	Tabs             []TabState             `json:"tabs,omitempty"`
+	CacheCount       int                    `json:"cache_count"`
+	CacheBytes       int64                  `json:"cache_bytes"`
+	SegmentBytes     int64                  `json:"segment_bytes"`
+	SegmentMinutes   int                    `json:"segment_minutes"`
+	QuotaBytes       int64                  `json:"quota_bytes"`
+	RetentionDays    int                    `json:"retention_days"`
+	Cleanup          bool                   `json:"cleanup"`
+	Shortcuts        map[string]string      `json:"shortcuts,omitempty"`
+	ContextBefore    int                    `json:"context_before"`
+	ContextAfter     int                    `json:"context_after"`
 }
 
 type Workspace struct {
@@ -60,7 +61,7 @@ type Workspace struct {
 }
 
 func DefaultConfig() Config {
-	return Config{Version: 1, Theme: "system", FontSize: 14, Wrap: true, DetailHeight: 180, Columns: []string{"time", "pid", "tid", "tag", "package"}, Favorites: map[string]string{}, SaveShellHistory: false, CacheCount: 200000, CacheBytes: 64 << 20, SegmentBytes: 100 << 20, QuotaBytes: 2 << 30, Shortcuts: map[string]string{}, ContextBefore: 20, ContextAfter: 20}
+	return Config{ScreenRecording: ScreenRecordingOptions{KeepDevicePlayback: true, RevealAfterSave: true}, Version: 1, Theme: "system", FontSize: 14, Wrap: true, DetailHeight: 180, Columns: []string{"time", "pid", "tid", "tag", "package"}, Favorites: map[string]string{}, SaveShellHistory: false, CacheCount: 200000, CacheBytes: 64 << 20, SegmentBytes: 100 << 20, QuotaBytes: 2 << 30, Shortcuts: map[string]string{}, ContextBefore: 20, ContextAfter: 20}
 }
 func ConfigPath() (string, error) {
 	dir, err := os.UserConfigDir()

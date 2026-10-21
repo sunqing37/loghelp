@@ -70,6 +70,7 @@ type page struct {
 	detailSelection                                  detailSelection
 }
 type app struct {
+	installer                                                     *appInstaller
 	triggerWorkers                                                []<-chan struct{}
 	restart                                                       *core.RestartRequest
 	restarting                                                    bool

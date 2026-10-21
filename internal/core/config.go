@@ -21,6 +21,7 @@ type TabState struct {
 	MergeLines    bool   `json:"merge_lines,omitempty"`
 }
 type Config struct {
+	AppInstall       AppInstallOptions      `json:"app_install,omitempty"`
 	ScreenRecording  ScreenRecordingOptions `json:"screen_recording"`
 	RecentFiles      []string               `json:"recent_files,omitempty"`
 	Workspaces       []Workspace            `json:"workspaces,omitempty"`

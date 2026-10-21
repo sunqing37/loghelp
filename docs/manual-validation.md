@@ -863,3 +863,25 @@ Windows amd64 修复版桌面构建已于 2026-10-20T13:46:20.912890+08:00 完�
 Windows EXE 使用独立 APPDATA/LOCALAPPDATA 后台启动 4 秒，退出码 0、stderr 为空；应用自有 workspace.png 人工查看，主界面显示 v0.0.3 · r0。新 EXE 的 --version 返回 LogHelp 0.0.3 r0，保留的旧版验收副本返回 LogHelp 0.0.2 r0。证据为 artifacts/release-0.0.3/preflight.json、startup/workspace.png 和 startup/stderr.txt；未在本次版本号变更后重做设备功能或交互验收，先前功能记录继续按原范围保留。
 
 正式包由已提交源码和上述成功构建记录生成，计划包括六个 ZIP、Windows x64/ARM64 Setup 和 SHA256SUMS.txt；包内记录同一源码 commit、VERSION、REVISION 和 EXE 哈希。安装器脚本本轮未改动，沿用此前隔离安装/卸载验收，不把本次正式 Setup 当作已重新实装。发布后另行核对公开附件大小、哈希、Latest 状态及旧版本更新识别，结果保存在忽略目录，避免改变已打包源码来源。
+
+## 2026-10-21：指定设备应用安装
+
+新增顶部「安装应用」和文件菜单入口，复用设备列表及跨平台系统文件对话框，支持多选安装文件、主窗口/安装弹窗拖入，安装期间固定目标设备。支持 APK、多个 APK 的 base/split 归组安装，以及未加密 APKS/XAPK/APKM/.multi-apk ZIP；官方 APKS 和 AAB 通过用户配置的 Java/bundletool 执行，AAB 使用调试签名。XAPK OBB 校验包名后复制到目标设备 Android/obb 目录。
+
+实际验证：执行 gofmt 和 `git diff --check`；通过现有 `scripts/build.py` 的并发编译检查与构建锁，串行完成 Windows/macOS/Linux × amd64/arm64 六目标 `internal/core`、`internal/ui` 模块编译，均通过，CGO_ENABLED=0。成功记录为 `artifacts/modules-{windows,darwin,linux}-{amd64,arm64}.json`。未新增或运行自动测试；未生成完整桌面产物，现有 bin/EXE 未更新；未执行设备安装或 GUI 交互，不将模块编译视为功能验收。源码未再修改时复用这些记录，不因只读复核重复编译。
+
+待手动验收（均未执行）：
+
+- 通过按钮单选 APK、多选同一应用的 base/splits、多选不同应用，核对安装结果与指定设备；至少连接两台设备，安装中切换日志页，确认目标始终不变。
+- 主窗口和安装弹窗拖入各类格式、大写扩展名、含空格/中文路径；取消文件选择、替换待安装列表、混合拖入日志和安装包、超过 128 个文件，确认提示与原日志拖拽功能。
+- 验证 APK manifest 的 UTF-8/UTF-16 字符串池、versionCodeMajor、多架构配置分包选择，缺 base、重复 split、版本混选、损坏 ZIP、非法归档路径与不兼容 ABI 的失败提示。
+- 使用真实 APKS（含 toc.pb 和普通分包 ZIP 两种）、XAPK、未加密 APKM、.multi-apk；核对多语言/密度资源、XAPK OBB 完整复制，以及 OBB 重名、包名不匹配、存储权限失败时的部分完成提示。
+- 配置 Java 与 bundletool，安装 AAB、官方 APKS；验证 JAVA_HOME/PATH、BUNDLETOOL_JAR、程序旁 tools/bundletool.jar 的查找顺序及配置保存。核对缺依赖、无效 JAR、调试密钥缺失、正式签名冲突时的提示。
+- 验证覆盖安装保留数据、签名不一致、低版本、缺 split、空间不足、USB 安装被拒绝、安装中断连、取消、超时；确认不会自动卸载或回滚，并显示真实结果。
+- 关闭弹窗后台安装、重新打开查看进度和取消、退出程序后的本地进程/临时目录清理；核对 macOS/Linux 实际文件选择、拖拽及设备安装交互。
+
+随后用户明确授权生成 Windows EXE 供手动验收。通过现有构建脚本检查并发编译后，于 2026-10-21 10:30:23（+08:00）完成 Windows amd64 完整桌面构建（CGO_ENABLED=0），产物 `bin/loghelp.exe`，版本 0.0.3 r0，大小 37,005,824 字节，SHA-256 为 `7b5c58be7b10a8879a8313cc4cd62836f95e27574e11a5300be8f7ed0997f6b5`。只读复核源码指纹及产物哈希均与 `artifacts/desktop-windows-amd64.json` 匹配；未重复编译、未启动程序或安装设备应用，上述功能交互仍待用户手动验收。
+
+用户随后反馈「安装功能测试没问题」，并授权 review 后提交。此次反馈作为安装功能的用户手动验收结果，不推定覆盖上面清单中的所有格式、异常路径或其他系统。Review 范围为安装核心与 manifest 解析、归档/OBB 处理、设备绑定、后台状态和取消、文件选择与拖拽、配置及相关说明，属于同一个功能，合并为一笔「支持安装应用到指定设备」提交。
+
+Review 发现异常 manifest 字符串池可以重复引用同一长字符串，使 4 MiB 输入限制不足以限制解码内存；增加累计 16 MiB 解码预算，UTF-16 按每个码元最多 3 字节 UTF-8 保守计费，分配前拒绝超额。修正后复核未发现其他阻塞提交的问题。因源码实际修改，沿用本会话 Windows 构建授权，于 2026-10-21 10:33:11（+08:00）更新 `bin/loghelp.exe`，大小 37,006,336 字节，SHA-256 为 `8769e1826014199e35cac05c699fd61a3dd7a94daf7dfc71c0097bd3556c5996`；随后串行完成其余五目标模块编译，全部通过。源码指纹及 EXE 哈希与成功记录一致，未新增或运行自动测试，未重新启动 GUI 或重复实机安装；本次修正未扩展用户已确认的功能验收范围。

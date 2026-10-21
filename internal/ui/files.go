@@ -70,6 +70,14 @@ func (w *app) saveLogFile(choose func(string)) {
 }
 
 func (w *app) fileDialog(mode, title, initial string, filters zenity.FileFilters, choose func(string)) {
+	w.fileDialogPaths(mode, title, initial, filters, false, func(paths []string) {
+		if len(paths) > 0 {
+			choose(paths[0])
+		}
+	})
+}
+
+func (w *app) fileDialogPaths(mode, title, initial string, filters zenity.FileFilters, multiple bool, choose func([]string)) {
 	if w.fileDialogOpen || w.ctx.Err() != nil {
 		return
 	}
@@ -95,12 +103,18 @@ func (w *app) fileDialog(mode, title, initial string, filters zenity.FileFilters
 	w.ui.ClearFocus()
 	go func() {
 		defer cancel()
-		var path string
+		var paths []string
 		var err error
-		if mode == "save" {
-			path, err = zenity.SelectFileSave(options...)
+		if multiple {
+			paths, err = zenity.SelectFileMultiple(options...)
 		} else {
-			path, err = zenity.SelectFile(options...)
+			var path string
+			if mode == "save" {
+				path, err = zenity.SelectFileSave(options...)
+			} else {
+				path, err = zenity.SelectFile(options...)
+			}
+			paths = []string{path}
 		}
 		w.post(func() {
 			w.fileDialogOpen = false
@@ -112,15 +126,21 @@ func (w *app) fileDialog(mode, title, initial string, filters zenity.FileFilters
 				return
 			}
 			// Whitespace can be part of a valid Unix filename.
-			if path == "" || strings.IndexByte(path, 0) >= 0 {
+			if len(paths) == 0 {
 				return
 			}
+			for _, path := range paths {
+				if path == "" || strings.IndexByte(path, 0) >= 0 {
+					return
+				}
+			}
+			path := paths[0]
 			if mode == "directory" {
 				w.fileDirectory = path
 			} else {
 				w.fileDirectory = filepath.Dir(path)
 			}
-			choose(path)
+			choose(paths)
 		})
 	}()
 }

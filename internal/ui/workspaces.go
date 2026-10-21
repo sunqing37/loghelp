@@ -25,7 +25,7 @@ func (w *app) dropLogs() {
 	if dropped == nil || w.backgroundDiagnostic {
 		return
 	}
-	if w.modal || w.fileDialogOpen {
+	if w.fileDialogOpen || (w.modal && w.profileScene != "安装应用") {
 		return
 	}
 	// Desktop entries expose their native absolute path; open the original file,
@@ -38,7 +38,7 @@ func (w *app) dropLogs() {
 				if p, ok := entry.(ebiten.AbsPather); ok {
 					paths = append(paths, p.AbsPath())
 				}
-				if len(paths) == 10 {
+				if len(paths) > 128 {
 					break
 				}
 			}
@@ -52,8 +52,29 @@ func (w *app) dropLogs() {
 				w.message("拖入文件", "无法取得本地文件路径，请使用打开文件。")
 				return
 			}
-			if w.modal || w.fileDialogOpen {
+			if w.fileDialogOpen || (w.modal && w.profileScene != "安装应用") {
 				w.message("拖入文件", "窗口状态已变化，请关闭弹窗后重新拖入。")
+				return
+			}
+			installCount := 0
+			for _, path := range paths {
+				if core.IsAppInstallPath(path) {
+					installCount++
+				}
+			}
+			if installCount > 0 {
+				if installCount != len(paths) {
+					w.message("拖入文件", "请将安装包与日志文件分开拖入。")
+					return
+				}
+				w.acceptInstallPaths(paths)
+				return
+			}
+			if w.modal {
+				return
+			}
+			if len(paths) > 10 {
+				w.message("拖入日志", "日志文件或录制目录一次最多 10 个，请分批拖入。")
 				return
 			}
 			for _, path := range paths {
@@ -64,7 +85,7 @@ func (w *app) dropLogs() {
 }
 
 func (w *app) fileMenu() {
-	box := w.column(w.button("选择日志文件…", w.openFile), w.diagnosticText("可直接把日志文件或录制目录拖入主窗口，一次最多 10 个。最近打开仅保存成功打开的路径。"))
+	box := w.column(w.button("选择日志文件…", w.openFile), w.button("安装应用到设备…", w.openAppInstaller), w.diagnosticText("可直接把日志文件或录制目录拖入主窗口，一次最多 10 个；APK 等安装包会进入应用安装窗口。最近打开仅保存成功打开的日志路径。"))
 	for _, path := range w.config.RecentFiles {
 		path := path
 		box.AddChild(w.button(w.wirelessText(path, w.wirelessContentWidth()-w.px(28)), func() { w.openLogPath(path) }))

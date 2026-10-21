@@ -115,7 +115,7 @@ func (w *app) rebuild() {
 	if w.preview != nil {
 		previewKind = "active"
 	}
-	chrome := w.stretchRow(brand, w.row(w.action("文件", "quiet", w.fileMenu), w.action("设备预览", previewKind, w.openDevicePreview), w.action("终端", "quiet", w.openTerminal), w.action("录制管理", "quiet", w.recordings), w.action("设置", "quiet", w.settings)))
+	chrome := w.stretchRow(brand, w.row(w.action("文件", "quiet", w.fileMenu), w.action("安装应用", "quiet", w.openAppInstaller), w.action("设备预览", previewKind, w.openDevicePreview), w.action("终端", "quiet", w.openTerminal), w.action("录制管理", "quiet", w.recordings), w.action("设置", "quiet", w.settings)))
 	root.AddChild(w.inset(chrome, 12, c.surface))
 	w.ui = &ebitenui.UI{Container: root, PostRenderHook: w.drawPanels}
 	if p == nil {

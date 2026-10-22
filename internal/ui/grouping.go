@@ -2,6 +2,8 @@ package ui
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"sort"
 	"strings"
 
@@ -11,8 +13,10 @@ import (
 type logGroup struct{ start, end int }
 
 const (
-	maxGroupLines = 512
-	maxGroupBytes = 256 << 10
+	maxGroupLines     = 512
+	maxGroupBytes     = 256 << 10
+	minJSONChunkBytes = 3 << 10
+	maxJSONGapMillis  = 10
 )
 
 func groupEntryBytes(entry *core.Entry) int {
@@ -20,12 +24,125 @@ func groupEntryBytes(entry *core.Entry) int {
 }
 
 func sameLogBlock(a, b *core.Entry) bool {
+	return a.Time.UnixMilli() == b.Time.UnixMilli() && sameLogSource(a, b)
+}
+
+func sameLogSource(a, b *core.Entry) bool {
 	return !a.Event && !b.Event && !a.Time.IsZero() && !b.Time.IsZero() &&
 		a.PID > 0 && a.TID > 0 && a.Tag != "" &&
-		a.Time.UnixMilli() == b.Time.UnixMilli() && b.Seq == a.Seq+1 &&
+		b.Seq == a.Seq+1 &&
 		a.Serial == b.Serial && a.Generation == b.Generation && a.Buffer == b.Buffer &&
 		a.PID == b.PID && a.TID == b.TID && a.Tag == b.Tag && a.Level == b.Level &&
 		a.Package == b.Package && a.Process == b.Process
+}
+
+func jsonLogHeader(message string) (header, prefix string) {
+	header = message
+	if strings.HasPrefix(header, "[") {
+		if at := strings.Index(header, "]:"); at >= 0 && strings.Count(header[:at], ",") == 2 {
+			prefix, header = header[:at+2], header[at+2:]
+		}
+	}
+	return header, prefix
+}
+
+func jsonQuoteState(text string, quoted, escaped bool) (bool, bool) {
+	for _, c := range text {
+		if escaped {
+			escaped = false
+		} else if quoted && c == '\\' {
+			escaped = true
+		} else if c == '"' {
+			quoted = !quoted
+		}
+	}
+	return quoted, escaped
+}
+
+// Only bridge long, incomplete JSON bodies. A short time gap alone cannot
+// distinguish separate log calls on the same thread. Look ahead to a complete
+// JSON value before accepting any timestamp boundary; incomplete captures stay
+// split. Raw entries are never rewritten.
+func extendJSONLogGroup(rows []*core.Entry, start, end, bytes int) (int, int) {
+	originalEnd, originalBytes := end, bytes
+	if end == len(rows) || bytes < minJSONChunkBytes || !sameLogSource(rows[end-1], rows[end]) {
+		return end, bytes
+	}
+	// Preserve and match the logger's source-location prefix on each chunk.
+	header, prefix := jsonLogHeader(rows[start].Message)
+	bodyStart := start
+	if label := strings.TrimSpace(header); label == "response body:" || label == "request body:" {
+		bodyStart++
+	} else if prefix != "" {
+		return end, bytes
+	}
+	if bodyStart == end {
+		return end, bytes
+	}
+	first := strings.TrimSpace(rows[bodyStart].Message)
+	if !strings.HasPrefix(first, "{") && !strings.HasPrefix(first, "[") {
+		return end, bytes
+	}
+	var body strings.Builder
+	for i := bodyStart; i < end; i++ {
+		if i > bodyStart {
+			body.WriteByte('\n')
+		}
+		body.WriteString(rows[i].Message)
+	}
+	if body.Len() < minJSONChunkBytes {
+		return end, bytes
+	}
+	for {
+		var value json.RawMessage
+		if err := json.NewDecoder(strings.NewReader(body.String())).Decode(&value); err != io.ErrUnexpectedEOF {
+			if err == nil && end > originalEnd {
+				return end, bytes
+			}
+			break
+		}
+		if end == len(rows) || end-start == maxGroupLines {
+			break
+		}
+		a, b := rows[end-1], rows[end]
+		gap := b.Time.UnixMilli() - a.Time.UnixMilli()
+		if !sameLogSource(a, b) || gap <= 0 || b.Time.UnixMilli()-rows[start].Time.UnixMilli() > maxJSONGapMillis {
+			break
+		}
+		message := b.Message
+		if prefix != "" {
+			if !strings.HasPrefix(message, prefix) {
+				break
+			}
+			message = strings.TrimPrefix(message, prefix)
+		}
+		if label := strings.TrimSpace(message); strings.HasPrefix(label, "response body:") || strings.HasPrefix(label, "request body:") {
+			break
+		}
+		// A chunk split inside a JSON string must be rejoined without a
+		// newline. Outside a string, retain whitespace between JSON tokens.
+		quoted, _ := jsonQuoteState(body.String(), false, false)
+		if !quoted {
+			body.WriteByte('\n')
+		}
+		next := end
+		for next < len(rows) && (next == end || sameLogBlock(rows[next-1], rows[next])) {
+			nextBytes := groupEntryBytes(rows[next]) + 1
+			if next-start >= maxGroupLines || bytes+nextBytes > maxGroupBytes {
+				return originalEnd, originalBytes
+			}
+			bytes += nextBytes
+			if next == end {
+				body.WriteString(message)
+			} else {
+				body.WriteByte('\n')
+				body.WriteString(rows[next].Message)
+			}
+			next++
+		}
+		end = next
+	}
+	return originalEnd, originalBytes
 }
 
 func mergeLogRows(ctx context.Context, source core.Page, scratch []logGroup, rowScratch []*core.Entry) (core.Page, []logGroup, error) {
@@ -36,7 +153,10 @@ func mergeLogRows(ctx context.Context, source core.Page, scratch []logGroup, row
 		if i%1024 == 0 && ctx.Err() != nil {
 			return source, nil, ctx.Err()
 		}
-		if sameLogBlock(source.Rows[i-1], source.Rows[i]) && groupEntryBytes(source.Rows[i-1])+groupEntryBytes(source.Rows[i])+1 <= maxGroupBytes {
+		a, b := source.Rows[i-1], source.Rows[i]
+		gap := b.Time.UnixMilli() - a.Time.UnixMilli()
+		longChunk := groupEntryBytes(a) >= minJSONChunkBytes && gap > 0 && gap <= maxJSONGapMillis && sameLogSource(a, b)
+		if (sameLogBlock(a, b) || longChunk) && groupEntryBytes(a)+groupEntryBytes(b)+1 <= maxGroupBytes {
 			canMerge = true
 			break
 		}
@@ -61,6 +181,7 @@ func mergeLogRows(ctx context.Context, source core.Page, scratch []logGroup, row
 			bytes += nextBytes
 			end++
 		}
+		end, bytes = extendJSONLogGroup(source.Rows, start, end, bytes)
 		for hit < len(source.Hits) && source.Hits[hit] < start {
 			hit++
 		}
@@ -144,9 +265,19 @@ func (p *page) detailEntry(index int) *core.Entry {
 		entry := *rows[0]
 		var text strings.Builder
 		text.WriteString(entry.Raw)
-		for _, row := range rows[1:] {
-			text.WriteByte('\n')
-			text.WriteString(row.Message)
+		header, prefix := jsonLogHeader(rows[0].Message)
+		quoted, escaped := jsonQuoteState(header, false, false)
+		for i, row := range rows[1:] {
+			message := row.Message
+			continuation := !sameLogBlock(rows[i], row)
+			if continuation {
+				message = strings.TrimPrefix(message, prefix)
+			}
+			if !continuation || !quoted {
+				text.WriteByte('\n')
+			}
+			text.WriteString(message)
+			quoted, escaped = jsonQuoteState(message, quoted, escaped)
 		}
 		entry.Raw = text.String()
 		p.groupDetail, p.groupDetailLastSeq = &entry, last

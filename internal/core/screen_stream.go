@@ -36,21 +36,25 @@ type VideoFrame struct {
 }
 
 type ScreenStream struct {
-	ctx         context.Context
-	cancel      context.CancelFunc
-	done        chan struct{}
-	control     chan []byte
-	mu          sync.Mutex
-	latest      *VideoFrame
-	err         error
-	frames      uint64
-	ready       bool
-	pixels      sync.Pool
-	decoderLog  *streamLog
-	videoConfig []byte
-	audioConfig []byte
-	options     ScreenRecordingOptions
-	recording   *ScreenRecording
+	ctx               context.Context
+	cancel            context.CancelFunc
+	done              chan struct{}
+	control           chan []byte
+	mu                sync.Mutex
+	latest            *VideoFrame
+	err               error
+	frames            uint64
+	ready             bool
+	pixels            sync.Pool
+	decoderLog        *streamLog
+	videoConfig       []byte
+	audioConfig       []byte
+	options           ScreenRecordingOptions
+	recording         *ScreenRecording
+	clipboardChanges  chan string
+	clipboardSequence uint64
+	clipboardAck      chan uint64
+	clipboardReadErr  error
 }
 
 func StartScreenStream(parent context.Context, adb *ADB, serial string) *ScreenStream {
@@ -60,6 +64,7 @@ func StartScreenStream(parent context.Context, adb *ADB, serial string) *ScreenS
 func StartScreenStreamWithOptions(parent context.Context, adb *ADB, serial string, options ScreenRecordingOptions, previous ...*ScreenStream) *ScreenStream {
 	ctx, cancel := context.WithCancel(parent)
 	s := &ScreenStream{ctx: ctx, cancel: cancel, done: make(chan struct{}), control: make(chan []byte, 64), options: options}
+	s.clipboardChanges = make(chan string, 1)
 	go func() {
 		// Finish the previous server (including its setting restoration) before
 		// opening another recording session on the same device.
@@ -310,7 +315,7 @@ func (s *ScreenStream) run(adb *ADB, serial string) error {
 	serverContext, serverCancel := context.WithCancel(s.ctx)
 	defer serverCancel()
 	arguments := []string{"shell", "CLASSPATH=" + remote, "app_process", "/", "com.genymobile.scrcpy.Server", mirrorVersion,
-		"scid=" + id, "tunnel_forward=true", "audio=" + strconv.FormatBool(s.options.SystemAudio), "show_touches=" + strconv.FormatBool(s.options.ShowTouches), "control=true", "max_size=1280", "max_fps=60", "video_bit_rate=8000000", "video_codec_options=i-frame-interval=1", "send_device_meta=false", "clipboard_autosync=false", "power_on=false"}
+		"scid=" + id, "tunnel_forward=true", "audio=" + strconv.FormatBool(s.options.SystemAudio), "show_touches=" + strconv.FormatBool(s.options.ShowTouches), "control=true", "max_size=1280", "max_fps=60", "video_bit_rate=8000000", "video_codec_options=i-frame-interval=1", "send_device_meta=false", "clipboard_autosync=true", "power_on=false"}
 	if s.options.SystemAudio {
 		arguments = append(arguments, "audio_codec=aac", "audio_bit_rate=128000")
 		if s.options.KeepDevicePlayback {
@@ -393,8 +398,15 @@ func (s *ScreenStream) run(adb *ADB, serial string) error {
 	s.mu.Unlock()
 	controlErrors := make(chan error, 1)
 	go s.writeControls(controlConnection, controlErrors)
-	// Consume server messages even though clipboard text synchronization is off.
-	go io.Copy(io.Discard, control)
+	controlReadDone := make(chan struct{})
+	go func() {
+		defer close(controlReadDone)
+		err := s.readClipboardMessages(control)
+		s.mu.Lock()
+		s.clipboardReadErr = err
+		s.mu.Unlock()
+	}()
+	defer func() { controlConnection.close(); <-controlReadDone }()
 	var header [12]byte
 	var config, packet []byte
 	for {

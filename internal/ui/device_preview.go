@@ -39,6 +39,11 @@ type devicePreview struct {
 	statsAt                                      time.Time
 	statsFrames                                  uint64
 	deviceOffline                                bool
+	clipboardEnabled                             bool
+	clipboardCancel                              context.CancelFunc
+	clipboardStream                              *core.ScreenStream
+	clipboardButton                              *widget.Button
+	clipboardStatus                              string
 	panel                                        *widget.Container
 	statusLabel                                  *widget.Text
 	pause, reconnect, screenshot, copyScreenshot *widget.Button
@@ -120,6 +125,7 @@ func (w *app) disposeDevicePreview() {
 	if d := w.preview; d != nil {
 		w.cancelDeviceTouch()
 		w.cancelPreparingDeviceRecording(d)
+		w.stopDeviceClipboard(d)
 		d.cancel()
 		if d.stream != nil {
 			d.stream.Close()
@@ -148,7 +154,7 @@ func (w *app) startDevicePreview(serial string) {
 	}
 	w.disposeDevicePreview()
 	ctx, cancel := context.WithCancel(w.ctx)
-	w.preview = &devicePreview{client: w.client, serial: serial, ctx: ctx, cancel: cancel, shader: shader, status: "正在连接视频投屏…", statsAt: time.Now()}
+	w.preview = &devicePreview{client: w.client, serial: serial, ctx: ctx, cancel: cancel, shader: shader, status: "正在连接视频投屏…", statsAt: time.Now(), clipboardEnabled: !w.backgroundDiagnostic}
 	w.preview.stream = core.StartScreenStream(ctx, w.client, serial)
 	w.previewStreams = append(w.previewStreams, w.preview.stream)
 	ebiten.SetWindowSizeLimits(1440, 720, -1, -1)
@@ -180,6 +186,11 @@ func (w *app) devicePanel() *widget.Container {
 	serial.MaxWidth = float64(w.px(288))
 	d.pause = w.action("暂停", "quiet", func() { w.cancelDeviceTouch(); d.paused = !d.paused; w.updateDeviceChrome() })
 	d.reconnect = w.action("重连", "quiet", w.reconnectDevicePreview)
+	d.clipboardButton = w.action("剪贴板共享：开", "quiet", func() {
+		d.clipboardEnabled = !d.clipboardEnabled
+		w.updateDeviceClipboard(d)
+		w.updateDeviceChrome()
+	})
 	d.screenshot = w.action("保存截图", "primary", func() { w.captureDeviceScreenshot(false) })
 	d.copyScreenshot = w.action("复制截图", "quiet", func() { w.captureDeviceScreenshot(true) })
 	d.record = w.action("开始录屏", "primary", w.toggleDeviceRecording)
@@ -201,8 +212,8 @@ func (w *app) devicePanel() *widget.Container {
 	d.statusLabel = w.muted(d.status)
 	d.statusLabel.MaxWidth = float64(w.px(288))
 	d.statusLabel.GetWidget().MinHeight = w.px(64)
-	content := widget.NewContainer(widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(1), widget.GridLayoutOpts.Stretch([]bool{true}, []bool{false, false, false, false, false, false, true, false, false, false}), widget.GridLayoutOpts.Spacing(0, w.px(10)))))
-	content.AddChild(header, serial, w.row(d.pause, d.reconnect), w.row(d.screenshot, d.copyScreenshot), w.row(d.record, d.recordSettings), d.recordLabel, d.panel, buttons, w.muted("视频投屏 · 点击／拖动操作设备"), d.statusLabel)
+	content := widget.NewContainer(widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(1), widget.GridLayoutOpts.Stretch([]bool{true}, []bool{false, false, false, false, false, false, false, true, false, false, false}), widget.GridLayoutOpts.Spacing(0, w.px(10)))))
+	content.AddChild(header, serial, w.row(d.pause, d.reconnect), w.row(d.screenshot, d.copyScreenshot), d.clipboardButton, w.row(d.record, d.recordSettings), d.recordLabel, d.panel, buttons, w.muted("视频投屏 · 点击／拖动操作设备"), d.statusLabel)
 	box := w.inset(content, 12, w.colors().sidebar)
 	box.GetWidget().MinWidth = w.px(320)
 	box.GetWidget().LayoutData = widget.GridLayoutData{MaxWidth: w.px(320)}
@@ -218,6 +229,13 @@ func (w *app) updateDeviceChrome() {
 	status := d.status
 	if d.paused {
 		status = "显示已暂停 · " + status
+	}
+	d.clipboardButton.SetText("剪贴板共享：关")
+	if d.clipboardEnabled {
+		d.clipboardButton.SetText("剪贴板共享：开")
+		if d.ready && !d.failed {
+			status += "\n" + d.clipboardStatus
+		}
 	}
 	if d.notice != "" {
 		status += "\n" + d.notice
@@ -420,6 +438,7 @@ func (w *app) updateDevicePreviewAvailability(devices []core.Device) {
 }
 
 func (w *app) failDevicePreview(d *devicePreview, status string) {
+	w.stopDeviceClipboard(d)
 	w.cancelDeviceTouch()
 	if d.recordPreparing {
 		w.cancelPreparingDeviceRecording(d)
@@ -454,6 +473,7 @@ func (w *app) updateDevicePreview(allowInput bool) {
 	if err != nil && !d.failed {
 		w.failDevicePreview(d, fmt.Sprintf("投屏连接失败，可点击重连或等待设备重新上线\n%s", err))
 	}
+	w.updateDeviceClipboard(d)
 	if frame := d.stream.TakeFrame(); frame != nil {
 		if !d.paused && !d.failed {
 			if d.frameSize != frame.Size {

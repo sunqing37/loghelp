@@ -63,6 +63,7 @@ func (w *app) cancelPreparingDeviceRecording(d *devicePreview) {
 }
 
 func (w *app) replaceDevicePreviewStream(d *devicePreview, options core.ScreenRecordingOptions) {
+	w.stopDeviceClipboard(d)
 	w.cancelDeviceTouch()
 	previous := d.stream
 	previous.Close()

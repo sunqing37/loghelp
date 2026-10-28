@@ -9,16 +9,17 @@ import (
 )
 
 type TabState struct {
-	Name          string `json:"name"`
-	Serial        string `json:"serial,omitempty"`
-	File          string `json:"file,omitempty"`
-	Filter        string `json:"filter,omitempty"`
-	Search        string `json:"search,omitempty"`
-	Package       string `json:"package,omitempty"`
-	Buffers       string `json:"buffers,omitempty"`
-	CaseSensitive bool   `json:"case_sensitive,omitempty"`
-	SearchRegex   bool   `json:"search_regex,omitempty"`
-	MergeLines    bool   `json:"merge_lines,omitempty"`
+	Name             string `json:"name"`
+	Serial           string `json:"serial,omitempty"`
+	File             string `json:"file,omitempty"`
+	Filter           string `json:"filter,omitempty"`
+	Search           string `json:"search,omitempty"`
+	Package          string `json:"package,omitempty"`
+	FollowForeground bool   `json:"follow_foreground,omitempty"`
+	Buffers          string `json:"buffers,omitempty"`
+	CaseSensitive    bool   `json:"case_sensitive,omitempty"`
+	SearchRegex      bool   `json:"search_regex,omitempty"`
+	MergeLines       bool   `json:"merge_lines,omitempty"`
 }
 type Config struct {
 	AppInstall       AppInstallOptions      `json:"app_install,omitempty"`

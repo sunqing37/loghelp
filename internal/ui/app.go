@@ -102,6 +102,8 @@ type app struct {
 	listCancel                                                    context.CancelFunc
 	wirelessCleanup                                               func()
 	preview                                                       *devicePreview
+	foregroundFollow                                              *foregroundFollow
+	foregroundLabel                                               *widget.Text
 	previewStreams                                                []*core.ScreenStream
 	profileDeviceCopyDone                                         bool
 	face                                                          text.Face
@@ -480,6 +482,7 @@ func (w *app) shutdown() {
 	}
 	w.save()
 	w.cancel()
+	w.stopForegroundFollow()
 	w.cancelWirelessOperation()
 	w.cancelListRefresh()
 	w.disposeDevicePreview()
@@ -615,6 +618,7 @@ ready:
 		w.applyProfileSelection(p)
 		w.updateChrome()
 	}
+	w.updateForegroundFollow()
 	w.updateDevicePreview(allowInput)
 	activeStreams := w.previewStreams[:0]
 	for _, stream := range w.previewStreams {

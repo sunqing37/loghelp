@@ -98,6 +98,7 @@ func (w *app) rebuild() {
 	w.serialInput, w.appInput, w.buffersInput, w.filterInput, w.searchInput, w.commandInput = nil, nil, nil, nil, nil, nil
 	w.sourceLabel, w.resultLabel, w.statusLabel = nil, nil, nil
 	w.logToolsLabel = nil
+	w.foregroundLabel = nil
 	w.renderDirty = true
 	defer func() {
 		if w.modal && w.modalWindow != nil {
@@ -253,7 +254,15 @@ func (w *app) sidebar(p *page) *widget.Container {
 		}), w.muted("固定设备连接"), w.muted("切换日志页不会改变终端目标"), w.row(), w.row(), w.row(), w.row(), w.row(), w.row(), w.action("快捷键与帮助", "quiet", w.help))
 	} else {
 		w.serialInput = w.input(p.state.Serial, "选择设备或输入序列号", nil, nil)
-		w.appInput = w.input(p.state.Package, "全部应用", func(string) { p.dirty = true; p.editAt = time.Now() }, func() { w.apply(p) })
+		w.appInput = w.input(p.state.Package, "全部应用", func(value string) {
+			// Changed events are deferred. Automatic package updates have
+			// already refreshed the view and must not apply draft filters.
+			if p.state.FollowForeground && strings.TrimSpace(value) == p.state.Package {
+				return
+			}
+			p.dirty = true
+			p.editAt = time.Now()
+		}, func() { w.apply(p) })
 		w.buffersInput = w.input(p.state.Buffers, "main,system,crash", nil, nil)
 		if p.state.File != "" {
 			name := w.label(filepath.Base(p.state.File))
@@ -272,7 +281,14 @@ func (w *app) sidebar(p *page) *widget.Container {
 			})
 			w.startActive = false
 			content.AddChild(w.startButton)
-			content.AddChild(w.muted("应用 / 进程"), w.appInput, w.action("选择应用", "quiet", w.chooseApp), w.muted("日志缓冲区"), w.buffersInput, w.row(), w.action("快捷键与帮助", "quiet", w.help))
+			followKind, followText := "quiet", "跟随顶部应用：关"
+			if p.state.FollowForeground {
+				followKind, followText = "active", "跟随顶部应用：开"
+			}
+			w.foregroundLabel = w.muted(w.foregroundFollowStatus())
+			w.foregroundLabel.MaxWidth = float64(w.px(192))
+			appControls := w.column(w.action("选择应用", "quiet", w.chooseApp), w.action(followText, followKind, w.toggleForegroundFollow), w.foregroundLabel)
+			content.AddChild(w.muted("应用 / 进程"), w.appInput, appControls, w.muted("日志缓冲区"), w.buffersInput, w.row(), w.action("快捷键与帮助", "quiet", w.help))
 		}
 
 	}
@@ -418,6 +434,7 @@ func (w *app) updateChrome() {
 		}
 	}
 	update(w.logToolsLabel, p.timeDifferenceText())
+	update(w.foregroundLabel, w.foregroundFollowStatus())
 	if w.copyDetailButton != nil {
 		start, end := p.detailSelection.bounds()
 		w.copyDetailButton.GetWidget().Disabled = p.selected < 0 || p.selected >= len(p.result.Rows) || end <= start || p.detailCache.entry == nil || end > len(p.detailCache.entry.Raw)

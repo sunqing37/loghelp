@@ -38,6 +38,7 @@ type devicePreview struct {
 	status, notice                               string
 	statsAt                                      time.Time
 	statsFrames                                  uint64
+	deviceOffline                                bool
 	panel                                        *widget.Container
 	statusLabel                                  *widget.Text
 	pause, reconnect, screenshot, copyScreenshot *widget.Button
@@ -385,9 +386,58 @@ func (w *app) drawDeviceScreen(screen *ebiten.Image) {
 	clip.DrawRectShader(d.frameSize.X, d.frameSize.Y, d.shader, opts)
 }
 
+// Only successful device snapshots drive transitions; an enumeration error
+// does not imply that the selected device went offline.
+func (w *app) updateDevicePreviewAvailability(devices []core.Device) {
+	d := w.preview
+	if d == nil || d.client != w.client || d.ctx.Err() != nil {
+		return
+	}
+	online := false
+	for _, device := range devices {
+		if device.Serial == d.serial && device.State == "device" {
+			online = true
+			break
+		}
+	}
+	if online == !d.deviceOffline {
+		return
+	}
+	d.deviceOffline = !online
+	if !online {
+		w.failDevicePreview(d, "设备离线或未授权，等待原设备上线…")
+		d.stream.Close()
+		return
+	}
+	if ready, _, err := d.stream.State(); ready && err == nil && !d.failed {
+		return // A manual reconnect already restored this device.
+	}
+	// Stream replacement waits for the previous session's cleanup. Display
+	// pause and any recording completion callback remain independent.
+	w.replaceDevicePreviewStream(d, core.ScreenRecordingOptions{})
+	d.status = "设备已上线，正在恢复视频投屏…"
+	w.updateDeviceChrome()
+}
+
+func (w *app) failDevicePreview(d *devicePreview, status string) {
+	w.cancelDeviceTouch()
+	if d.recordPreparing {
+		w.cancelPreparingDeviceRecording(d)
+		d.notice = "录屏准备已中断，请在预览恢复后重新开始录屏"
+	}
+	d.failed, d.ready = true, false
+	d.status = status
+	if d.texture != nil {
+		d.texture.Dispose()
+		d.texture = nil
+	}
+	d.frameSize = image.Point{}
+	w.updateDeviceChrome()
+}
+
 func (w *app) updateDevicePreview(allowInput bool) {
 	d := w.preview
-	if d == nil {
+	if d == nil || d.ctx.Err() != nil {
 		return
 	}
 	w.pollDeviceRecording(d)
@@ -396,20 +446,13 @@ func (w *app) updateDevicePreview(allowInput bool) {
 		return
 	}
 	ready, frames, err := d.stream.State()
+	ready = ready && err == nil && !d.failed
 	if ready != d.ready {
 		d.ready = ready
 		w.updateDeviceChrome()
 	}
 	if err != nil && !d.failed {
-		w.cancelDeviceTouch()
-		d.failed = true
-		d.status = err.Error() + "；点击重连重试"
-		if d.texture != nil {
-			d.texture.Dispose()
-			d.texture = nil
-		}
-		d.frameSize = image.Point{}
-		w.updateDeviceChrome()
+		w.failDevicePreview(d, fmt.Sprintf("投屏连接失败，可点击重连或等待设备重新上线\n%s", err))
 	}
 	if frame := d.stream.TakeFrame(); frame != nil {
 		if !d.paused && !d.failed {
@@ -431,6 +474,9 @@ func (w *app) updateDevicePreview(allowInput bool) {
 	if ready && !d.failed && time.Since(d.statsAt) >= time.Second {
 		fps := float64(frames-d.statsFrames) / time.Since(d.statsAt).Seconds()
 		d.status = fmt.Sprintf("%d × %d · %.0f FPS", d.frameSize.X, d.frameSize.Y, fps)
+		if d.texture == nil {
+			d.status = fmt.Sprintf("视频已连接 · %.0f FPS", fps)
+		}
 		d.statsAt, d.statsFrames = time.Now(), frames
 		w.updateDeviceChrome()
 	}

@@ -524,8 +524,12 @@ func (w *app) monitor() {
 			devices, err := client.Devices(ctx)
 			cancel()
 			w.post(func() {
+				if client != w.client {
+					return
+				}
 				if err == nil {
 					w.devices = devices
+					w.updateDevicePreviewAvailability(devices)
 				} else if p := w.active(); p != nil {
 					p.status = "设备枚举失败：" + err.Error()
 				}

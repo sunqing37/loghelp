@@ -119,7 +119,11 @@ func (w *app) prepareDeviceRecording(d *devicePreview, path string, options core
 			}
 			w.cancelPreparingDeviceRecording(d)
 			if prepareErr != nil {
-				w.replaceDevicePreviewStream(d, core.ScreenRecordingOptions{})
+				// A failed stream waits for the device to come online again. A
+				// preparation timeout still needs to cancel the running stream.
+				if _, _, streamErr := stream.State(); streamErr == nil {
+					w.replaceDevicePreviewStream(d, core.ScreenRecordingOptions{})
+				}
 				d.notice = prepareErr.Error()
 				w.updateDeviceChrome()
 				w.message("准备录屏失败", prepareErr.Error())
@@ -178,7 +182,8 @@ func (w *app) startPreparedDeviceRecording(d *devicePreview, stream *core.Screen
 				d.recording, d.recordStatus = nil, ""
 			}
 			if w.preview == d {
-				if d.stream == stream && (options.SystemAudio || options.ShowTouches) {
+				_, _, streamErr := stream.State()
+				if d.stream == stream && !d.failed && streamErr == nil && (options.SystemAudio || options.ShowTouches) {
 					w.replaceDevicePreviewStream(d, core.ScreenRecordingOptions{})
 				}
 				d.notice = message

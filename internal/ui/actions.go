@@ -360,6 +360,9 @@ func samePath(a, b string) bool {
 }
 func (w *app) validateExport(p *page, path string) error {
 	if p.offline != nil {
+		if samePath(path, p.offline.Path) {
+			return fmt.Errorf("不能覆盖原始日志或压缩包")
+		}
 		for _, source := range p.offline.Files {
 			if samePath(source, path) {
 				return fmt.Errorf("不能覆盖原始日志")
@@ -471,6 +474,7 @@ func (w *app) settings() { w.settingsFor(w.config) }
 func (w *app) settingsFor(initial core.Config) {
 	inputs := map[string]*boundedInput{}
 	proxySettings, updateProxy := w.updateProxySettings(initial.UpdateProxy)
+	importSettings, logImport := w.logImportSettings(initial.LogImport)
 	box := w.column(w.stretchRow(w.label("LogHelp "+appVersionLabel), w.action("检查更新", "quiet", func() {
 		proxy, err := updateProxy()
 		if err != nil {
@@ -511,7 +515,7 @@ func (w *app) settingsFor(initial core.Config) {
 	}), w.button("选择录制目录", func() {
 		w.selectDirectory(inputs["directory"].GetText(), func(path string) { inputs["directory"].SetText(path) })
 	})))
-	box.AddChild(proxySettings, w.heading("外观与阅读"))
+	box.AddChild(proxySettings, importSettings, w.heading("外观与阅读"))
 	theme := w.input(initial.Theme, "", nil, nil)
 	inputs["theme"] = theme
 	themeButtons := w.row()
@@ -606,6 +610,12 @@ func (w *app) settingsFor(initial core.Config) {
 			return
 		}
 		candidate.UpdateProxy = proxy
+		importOptions, err := logImport()
+		if err != nil {
+			w.showNestedDialog("日志解码设置错误", w.column(w.label(err.Error())))
+			return
+		}
+		candidate.LogImport = importOptions
 		if resetColumnWidths {
 			candidate.ColumnWidths = nil
 		}

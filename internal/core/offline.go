@@ -28,6 +28,9 @@ type Offline struct {
 	reference time.Time
 	cacheMu   sync.Mutex
 	indexes   []*offlineQueryIndex
+	closeMu   sync.RWMutex
+	closed    bool
+	tempDir   string
 }
 
 func OpenOffline(ctx context.Context, path string) (*Offline, error) {
@@ -70,6 +73,10 @@ func OpenOfflineProgress(ctx context.Context, path string, progress func(int64))
 	} else {
 		o.Files = []string{abs}
 	}
+	return indexOffline(ctx, o, progress)
+}
+
+func indexOffline(ctx context.Context, o *Offline, progress func(int64)) (*Offline, error) {
 	if len(o.Files) == 0 {
 		return nil, fmt.Errorf("会话中没有日志片段")
 	}
@@ -83,7 +90,7 @@ func OpenOfflineProgress(ctx context.Context, path string, progress func(int64))
 	}
 	// Build sparse byte offsets while obtaining the fixed age anchor. No log
 	// text is retained; checkpoints compact as the source grows.
-	err = o.scan(ctx, 1, true, func(e *Entry) bool {
+	err := o.scan(ctx, 1, true, func(e *Entry) bool {
 		o.count++
 		if !e.Time.IsZero() && !e.Event {
 			o.Anchor = e.Time
@@ -94,6 +101,24 @@ func OpenOfflineProgress(ctx context.Context, path string, progress func(int64))
 		return nil, err
 	}
 	return o, nil
+}
+
+// Close waits for current readers before removing only this import's temporary
+// files. Plain files and recording sessions are never removed.
+func (o *Offline) Close() error {
+	if o == nil {
+		return nil
+	}
+	o.closeMu.Lock()
+	defer o.closeMu.Unlock()
+	o.closed = true
+	if o.tempDir != "" {
+		if err := os.RemoveAll(o.tempDir); err != nil {
+			return fmt.Errorf("清理日志临时目录：%w", err)
+		}
+		o.tempDir = ""
+	}
+	return nil
 }
 func (o *Offline) Scan(ctx context.Context, visit func(*Entry) bool, progress func(int64)) error {
 	return o.scan(ctx, 1, false, visit, progress)
@@ -121,6 +146,11 @@ func (r *countedReader) Read(p []byte) (int, error) {
 }
 
 func (o *Offline) scan(ctx context.Context, first uint64, build bool, visit func(*Entry) bool, progress func(int64)) error {
+	o.closeMu.RLock()
+	defer o.closeMu.RUnlock()
+	if o.closed {
+		return fmt.Errorf("日志已关闭，请重新打开")
+	}
 	point := offlinePoint{Seq: 1}
 	if !build && len(o.points) > 0 {
 		i := sort.Search(len(o.points), func(i int) bool { return o.points[i].Seq > first }) - 1
@@ -171,7 +201,7 @@ func (o *Offline) scan(ctx context.Context, first uint64, build bool, visit func
 			if len(line) > 0 {
 				var e *Entry
 				raw := strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")
-				if strings.HasSuffix(path, ".jsonl") {
+				if strings.EqualFold(filepath.Ext(path), ".jsonl") {
 					var parsed Entry
 					if decodeErr := json.Unmarshal([]byte(raw), &parsed); decodeErr != nil {
 						if readErr == io.EOF {

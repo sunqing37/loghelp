@@ -34,6 +34,26 @@ type Entry struct {
 
 var threadLine = regexp.MustCompile(`^(?:(\d{4})-)?(\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2}\.\d+)\s+(\d+)\s+(\d+)\s+([VDIWEAF])\s+(.+?)\s*:\s?(.*)$`)
 var epochLine = regexp.MustCompile(`^\s*(\d{9,}\.\d+)\s+(\d+)\s+(\d+)\s+([VDIWEAF])\s+(.+?)\s*:\s?(.*)$`)
+var marsLine = regexp.MustCompile(`^\[([VDIWEAF])\]\[(\d{4}-\d{2}-\d{2}) ([+-]\d+(?:\.\d+)?) (\d{2}:\d{2}:\d{2}\.\d+)\]\[(\d+),\s*(\d+)\*?\]\[([^\]]*)\]\[[^\]]*\]\[(.*)$`)
+var marsCompactLine = regexp.MustCompile(`^\[(\d{4}-\d{2}-\d{2}) ([+-]\d+(?:\.\d+)?) (\d{2}:\d{2}:\d{2}\.\d+)\]\[([VDIWEAF])\]\[([^\]]*)\](.*)$`)
+
+func marsTime(date, offset, clock string) time.Time {
+	// Older Android formatters print +80 for UTC+8 by dropping the decimal
+	// point in +8.0; current formatters print signed decimal hours.
+	hours, err := strconv.ParseFloat(offset, 64)
+	if err != nil {
+		return time.Time{}
+	}
+	if !strings.Contains(offset, ".") && (hours > 14 || hours < -14) {
+		hours /= 10
+	}
+	if hours < -12 || hours > 14 {
+		return time.Time{}
+	}
+	zone := time.FixedZone("Mars", int(hours*3600))
+	t, _ := time.ParseInLocation("2006-01-02 15:04:05.999999999", date+" "+clock, zone)
+	return t
+}
 
 func ParseLine(raw string, reference time.Time) *Entry {
 	e := &Entry{Received: time.Now(), Raw: raw, Message: raw}
@@ -41,6 +61,20 @@ func ParseLine(raw string, reference time.Time) *Entry {
 		e.RawBytes = base64.StdEncoding.EncodeToString([]byte(raw))
 		e.Raw = strings.ToValidUTF8(raw, "�")
 		e.Message = e.Raw
+	}
+	if strings.HasPrefix(e.Raw, "[") {
+		if m := marsLine.FindStringSubmatch(e.Raw); m != nil {
+			e.Time = marsTime(m[2], m[3], m[4])
+			e.Level, e.Tag, e.Message = m[1], m[7], m[8]
+			e.PID, _ = strconv.Atoi(m[5])
+			e.TID, _ = strconv.Atoi(m[6])
+			return e
+		}
+		if m := marsCompactLine.FindStringSubmatch(e.Raw); m != nil {
+			e.Time = marsTime(m[1], m[2], m[3])
+			e.Level, e.Tag, e.Message = m[4], m[5], m[6]
+			return e
+		}
 	}
 	if m := epochLine.FindStringSubmatch(e.Raw); m != nil {
 		parts := strings.SplitN(m[1], ".", 2)

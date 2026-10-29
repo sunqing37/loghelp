@@ -42,7 +42,7 @@ func (w *app) browse(mode string, choose func(string)) {
 		initial = p.state.File
 	}
 	w.fileDialog("open", "打开日志文件", w.dialogDirectory(initial), zenity.FileFilters{
-		{Name: "日志与录制会话", Patterns: []string{"*.txt", "*.log", "*.jsonl", "*.json"}, CaseFold: true},
+		{Name: "日志、压缩包与录制会话", Patterns: []string{"*.txt", "*.log", "*.jsonl", "*.json", "*.xlog", "*.zip", "*.tar", "*.gz", "*.tgz", "*.bz2", "*.tbz2", "*.zst"}, CaseFold: true},
 		{Name: "所有文件", Patterns: []string{"*"}},
 	}, choose)
 }

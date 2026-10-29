@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -70,6 +71,9 @@ type page struct {
 	detailSelection                                  detailSelection
 }
 type app struct {
+	importWorkers                                                 []<-chan struct{}
+	importMu                                                      sync.Mutex
+	importSources                                                 map[*core.Offline]bool
 	installer                                                     *appInstaller
 	triggerWorkers                                                []<-chan struct{}
 	restart                                                       *core.RestartRequest
@@ -429,7 +433,8 @@ func (w *app) closeTab(p *page) {
 		p.shell.vt, p.shell.input = nil, nil
 		p.shell = nil
 	}
-	p.hub, p.offline = nil, nil
+	w.releaseOffline(p)
+	p.hub = nil
 	p.query, p.search = core.Query{}, core.Search{}
 	copy(w.pages[index:], w.pages[index+1:])
 	w.pages[len(w.pages)-1] = nil
@@ -500,6 +505,31 @@ func (w *app) shutdown() {
 	// temporary server files before the process exits.
 	deadline := time.NewTimer(8 * time.Second)
 	defer deadline.Stop()
+	for _, done := range w.importWorkers {
+		select {
+		case <-done:
+		case <-deadline.C:
+			return
+		}
+	}
+	w.importMu.Lock()
+	sources := make([]*core.Offline, 0, len(w.importSources))
+	for source := range w.importSources {
+		sources = append(sources, source)
+	}
+	w.importMu.Unlock()
+	cleanupDone := make(chan struct{})
+	go func() {
+		defer close(cleanupDone)
+		for _, source := range sources {
+			w.disposeOffline(source)
+		}
+	}()
+	select {
+	case <-cleanupDone:
+	case <-deadline.C:
+		return
+	}
 	for _, done := range w.triggerWorkers {
 		select {
 		case <-done:
@@ -557,6 +587,16 @@ func (w *app) Update() error {
 		}
 	}
 ready:
+	imports := w.importWorkers[:0]
+	for _, done := range w.importWorkers {
+		select {
+		case <-done:
+		default:
+			imports = append(imports, done)
+		}
+	}
+	clear(w.importWorkers[len(imports):])
+	w.importWorkers = imports
 	alive := w.triggerWorkers[:0]
 	for _, done := range w.triggerWorkers {
 		select {
@@ -744,7 +784,7 @@ func (w *app) start(p *page) {
 		return
 	}
 	w.stop(p)
-	p.offline = nil
+	w.releaseOffline(p)
 	p.state.File = ""
 	p.paused = false
 	p.pauseSeq, p.pauseDropped = 0, 0
@@ -994,6 +1034,7 @@ func (w *app) openOfflineAt(p *page, path string, target *core.Entry) {
 
 func (w *app) openOfflineTarget(p *page, path string, target *core.Entry, bookmark *core.Bookmark) {
 	w.stop(p)
+	w.releaseOffline(p)
 	p.timeAnchor = nil
 	p.state.File = path
 	p.offline = nil
@@ -1005,9 +1046,21 @@ func (w *app) openOfflineTarget(p *page, path string, target *core.Entry, bookma
 	p.detailSelection = detailSelection{}
 	p.selectRow(-1)
 	p.clearSeq, p.offset, p.scroll = 0, 0, 0
-	ctx, job, progress := w.beginPageJob(p, "建立离线索引", 0)
+	ctx, job, progress := w.beginPageJob(p, "解压/解码并建立离线索引", 0)
+	options := w.config.LogImport
+	done := make(chan struct{})
+	w.importWorkers = append(w.importWorkers, done)
 	go func() {
-		source, err := core.OpenOfflineProgress(ctx, path, progress)
+		defer close(done)
+		source, err := core.OpenLogProgress(ctx, path, options, progress)
+		if source != nil {
+			w.importMu.Lock()
+			if w.importSources == nil {
+				w.importSources = make(map[*core.Offline]bool)
+			}
+			w.importSources[source] = true
+			w.importMu.Unlock()
+		}
 		var seq uint64
 		var locateErr error
 		if err == nil && target != nil {
@@ -1018,6 +1071,9 @@ func (w *app) openOfflineTarget(p *page, path string, target *core.Entry, bookma
 		}
 		w.post(func() {
 			if p.dead || job != p.job || ctx.Err() != nil {
+				if source != nil {
+					go w.disposeOffline(source)
+				}
 				return
 			}
 			p.busy = false

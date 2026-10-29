@@ -313,12 +313,7 @@ func (w *app) drawPanels(screen *ebiten.Image) {
 		w.paintFace(area, title, float64(rect.Min.X)+float64(rect.Dx())/2-tw/2, cy, w.titleFace, c.text)
 		w.paintFace(area, hint, float64(rect.Min.X)+float64(rect.Dx())/2-hw/2, cy+float64(w.px(38)), w.uiFace, c.muted)
 	}
-	if total := len(p.result.Rows); total > rows {
-		track := rect.Dy()
-		height := max(track*rows/total, w.px(28))
-		offset := (track - height) * p.scroll / max(total-rows, 1)
-		vector.FillRect(area, float32(rect.Max.X-w.px(5)), float32(rect.Min.Y+offset), float32(w.px(3)), float32(height), c.line, false)
-	}
+	w.drawLogScrollbar(area, p, false)
 	if w.detailPanel == nil {
 		return
 	}
@@ -349,12 +344,7 @@ func (w *app) drawPanels(screen *ebiten.Image) {
 		w.highlightSpans(detail, lines[i], float64(detailRect.Min.X+w.px(16)-p.detailX), float64(detailRect.Min.Y+w.px(12)+(i-p.detailScroll)*lineHeight), p.detailCache.matches, p.detailCache.offsets[i], c.text)
 		w.drawDetailSelection(detail, p, i, float64(detailRect.Min.X+w.px(16)-p.detailX), float64(detailRect.Min.Y+w.px(12)+(i-p.detailScroll)*lineHeight))
 	}
-	if len(lines) > visible {
-		track := max(detailRect.Dy()-w.px(24), 1)
-		height := min(track, max(w.px(18), track*visible/len(lines)))
-		offset := (track - height) * p.detailScroll / max(len(lines)-visible, 1)
-		vector.FillRect(detail, float32(detailRect.Max.X-w.px(6)), float32(detailRect.Min.Y+w.px(12)+offset), float32(w.px(3)), float32(height), c.muted, false)
-	}
+	w.drawLogScrollbar(detail, p, true)
 }
 
 func (w *app) drawDetailDivider(screen *ebiten.Image) {
@@ -419,6 +409,9 @@ func (w *app) mouse(p *page) {
 		return
 	}
 	x, y := ebiten.CursorPosition()
+	if p.shell == nil && w.scrollLogs(p, x, y) {
+		return
+	}
 	if p.shell == nil && w.resizeColumns(x, y) {
 		return
 	}

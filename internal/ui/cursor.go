@@ -4,6 +4,7 @@ import (
 	"github.com/ebitenui/ebitenui/input"
 	"github.com/ebitenui/ebitenui/widget"
 	"github.com/hajimehoshi/ebiten/v2"
+	"image"
 )
 
 func cursorOver(target *widget.Widget, x, y int) bool {
@@ -37,6 +38,15 @@ func (w *app) updatePanelCursor(p *page) {
 		return
 	}
 	x, y := ebiten.CursorPosition()
+	if p.shell == nil {
+		for _, detail := range []bool{false, true} {
+			g := w.logScrollbar(p, detail)
+			if w.logScrollDrag.page == p || !g.track.Empty() && image.Pt(x, y).In(g.track) {
+				w.cursorShape = ebiten.CursorShapePointer
+				return
+			}
+		}
+	}
 	if p.shell == nil {
 		if col := w.columnAtDivider(x, y); col.key != "" {
 			w.cursorShape = ebiten.CursorShapeEWResize

@@ -118,6 +118,7 @@ type app struct {
 	rowHeader                                                     *widget.Container
 	tableX                                                        int
 	columnDrag                                                    columnResizeState
+	logScrollDrag                                                 logScrollDrag
 	serialInput, appInput, buffersInput, filterInput, searchInput *boundedInput
 	commandInput                                                  *boundedInput
 	fileDialogOpen                                                bool
@@ -582,6 +583,9 @@ ready:
 	}
 	if !allowInput && w.tabDrag.page != nil {
 		w.tabDrag.canceled = true
+	}
+	if !allowInput || w.modal {
+		w.logScrollDrag = logScrollDrag{}
 	}
 	if allowInput {
 		w.cursorShape = ebiten.CursorShapeDefault

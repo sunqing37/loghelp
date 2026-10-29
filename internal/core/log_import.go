@@ -86,21 +86,43 @@ const (
 )
 
 type logImporter struct {
-	ctx      context.Context
-	options  LogImportOptions
-	dir      string
-	bytes    int64
-	files    int
-	entries  int
-	logs     []string
-	warnings []string
-	progress func(int64)
-	origins  map[string]logOrigin
+	ctx          context.Context
+	options      LogImportOptions
+	dir          string
+	bytes        int64
+	files        int
+	entries      int
+	logs         []string
+	warnings     []string
+	progress     func(LogImportProgress)
+	state        LogImportProgress
+	origins      map[string]logOrigin
+	skipped      []string
+	skippedCount int
 }
 
 type logOrigin struct {
 	name    string
 	decoded bool
+}
+
+// Bytes is stage-local: expanded output during extraction/decoding, and input
+// bytes read during indexing. TotalBytes is only set when the total is known.
+type LogImportProgress struct {
+	Stage, File          string
+	FileIndex, FileCount int
+	Bytes, TotalBytes    int64
+	Logs, Skipped        int
+}
+
+func (i *logImporter) report(stage, file string) {
+	if stage != i.state.Stage || file != i.state.File {
+		i.state = LogImportProgress{Stage: stage, File: file}
+	}
+	i.state.Logs, i.state.Skipped = len(i.logs), i.skippedCount
+	if i.progress != nil {
+		i.progress(i.state)
+	}
 }
 
 func archiveKind(path string) string {
@@ -129,13 +151,13 @@ func (options LogImportOptions) decoder(path string) *LogDecoder {
 
 // OpenLogProgress preserves the original source path for recent files,
 // bookmarks and restored tabs; only the indexed files live in a private temp dir.
-func OpenLogProgress(ctx context.Context, path string, options LogImportOptions, progress func(int64)) (*Offline, error) {
+func OpenLogProgress(ctx context.Context, path string, options LogImportOptions, progress func(LogImportProgress)) (*Offline, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil, err
 	}
 	if info.IsDir() || archiveKind(path) == "" && !strings.EqualFold(filepath.Ext(path), ".xlog") && options.decoder(path) == nil {
-		return openOfflineProgress(ctx, path, progress, options.JSONLFields)
+		return openOfflineProgress(ctx, path, nil, options.JSONLFields, progress)
 	}
 	if err = ValidateLogImport(options); err != nil {
 		return nil, err
@@ -148,16 +170,17 @@ func OpenLogProgress(ctx context.Context, path string, options LogImportOptions,
 	if err != nil {
 		return nil, fmt.Errorf("创建日志临时目录：%w", err)
 	}
-	o := &Offline{Path: abs, stride: 512, reference: time.Now(), tempDir: dir, jsonFields: options.JSONLFields}
+	o := &Offline{Path: abs, stride: 512, reference: time.Now(), tempDir: dir, jsonFields: options.JSONLFields, importProgress: progress}
 	i := &logImporter{ctx: ctx, options: options, dir: dir, progress: progress, origins: map[string]logOrigin{abs: {name: abs}}}
 	if err = i.visit(abs, 0, true); err == nil {
 		o.Files = i.logs
 		o.Warnings = i.warnings
 		o.origins = i.origins
+		o.SkippedFiles, o.SkippedCount = i.skipped, i.skippedCount
 		if len(o.Files) == 0 {
 			err = fmt.Errorf("压缩包中没有支持的日志文件；自定义格式请先在设置中添加解码器")
 		} else {
-			_, err = indexOffline(ctx, o, progress)
+			_, err = indexOffline(ctx, o, nil)
 		}
 	}
 	if err != nil {
@@ -199,9 +222,8 @@ func (w importWriter) Write(p []byte) (int, error) {
 	}
 	n, err := w.w.Write(p)
 	w.i.bytes += int64(n)
-	if w.i.progress != nil {
-		w.i.progress(w.i.bytes)
-	}
+	w.i.state.Bytes += int64(n)
+	w.i.report(w.i.state.Stage, w.i.state.File)
 	return n, err
 }
 
@@ -250,9 +272,14 @@ func (i *logImporter) entry(name string, reader io.Reader, depth int, parent str
 		}
 	}
 	if !i.supported(name) {
+		i.skippedCount++
+		if len(i.skipped) < 20 {
+			i.skipped = append(i.skipped, parent+"!/"+entryName)
+		}
 		return nil
 	}
 	origin := parent + "!/" + entryName
+	i.report("解压", origin)
 	path, err := i.extract(name, reader)
 	if err != nil {
 		return fmt.Errorf("解压 %s：%w", name, err)
@@ -275,9 +302,11 @@ func (i *logImporter) visit(path string, depth int, direct bool) error {
 	var err error
 	origin := i.origins[path]
 	if decoder := i.options.decoder(path); decoder != nil {
+		i.report("解码", origin.name)
 		path, err = i.decodeExternal(path, *decoder)
 		origin.decoded = true
 	} else if strings.EqualFold(filepath.Ext(path), ".xlog") {
+		i.report("解码", origin.name)
 		path, err = i.decodeXlog(path)
 		origin.decoded = true
 	} else if !direct && !i.supported(path) {
@@ -293,6 +322,7 @@ func (i *logImporter) visit(path string, depth int, direct bool) error {
 
 func (i *logImporter) unpack(path, kind string, depth int) error {
 	parent := i.origins[path].name
+	i.report("解压", parent)
 	if kind == ".zip" {
 		z, err := zip.OpenReader(path)
 		if err != nil {
@@ -375,6 +405,7 @@ func (i *logImporter) unpack(path, kind string, depth int) error {
 			if err = i.entry(header.Name, t, depth, parent); err != nil {
 				return err
 			}
+			i.report("解压", parent)
 			// Bound skipped files as well; tar.Next would otherwise drain them
 			// without cancellation or an expansion limit.
 			if _, err = io.Copy(importWriter{i, io.Discard}, t); err != nil {
@@ -425,6 +456,8 @@ func (i *logImporter) decodeExternal(path string, decoder LogDecoder) (string, e
 	command.Stderr = io.Discard // Tool output may contain keys or raw logs.
 	command.WaitDelay = time.Second
 	var out *os.File
+	var monitorDone chan struct{}
+	var stopMonitor context.CancelFunc
 	if decoder.Output == "stdout" {
 		out, err = os.OpenFile(output, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 		if err != nil {
@@ -435,23 +468,38 @@ func (i *logImporter) decodeExternal(path string, decoder LogDecoder) (string, e
 		// The trusted tool writes a file itself. Stop it if that file grows
 		// beyond the remaining import budget instead of waiting for timeout.
 		remaining := maxImportBytes - i.bytes
+		monitorCtx, stop := context.WithCancel(ctx)
+		stopMonitor = stop
+		monitorDone = make(chan struct{})
+		state := i.state
 		go func() {
+			defer close(monitorDone)
 			tick := time.NewTicker(100 * time.Millisecond)
 			defer tick.Stop()
 			for {
 				select {
-				case <-ctx.Done():
+				case <-monitorCtx.Done():
 					return
 				case <-tick.C:
-					if info, err := os.Stat(output); err == nil && info.Size() > remaining {
-						cancel()
-						return
+					if info, err := os.Stat(output); err == nil {
+						if info.Size() > remaining {
+							cancel()
+							return
+						}
+						state.Bytes = info.Size()
+						if i.progress != nil {
+							i.progress(state)
+						}
 					}
 				}
 			}
 		}()
 	}
 	runErr := command.Run()
+	if stopMonitor != nil {
+		stopMonitor()
+		<-monitorDone
+	}
 	if out != nil {
 		runErr = errors.Join(runErr, out.Close())
 	}
@@ -470,6 +518,8 @@ func (i *logImporter) decodeExternal(path string, decoder LogDecoder) (string, e
 			return "", fmt.Errorf("日志解压/解码累计超过 4 GiB 限制")
 		}
 		i.bytes += info.Size()
+		i.state.Bytes += info.Size()
+		i.report("解码", i.state.File)
 	}
 	return output, nil
 }

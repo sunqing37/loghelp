@@ -81,8 +81,9 @@ type app struct {
 	support                                                       *support.Session
 	diagnosticErr                                                 error
 	diagnosticWarning                                             string
-	logSourceLabel                                                *widget.Text
 	logToolsLabel                                                 *widget.Text
+	logSourceLabel                                                *widget.Text
+	cancelJobButton                                               *widget.Button
 	backgroundDiagnostic                                          bool
 	profileScene                                                  string
 	profileSnapshotSaved                                          bool
@@ -993,9 +994,10 @@ func (w *app) refresh(p *page, force bool) {
 			p.viewportSeq = p.scrollAnchorSeq()
 			if source != nil {
 				scope := fmt.Sprintf("离线 %d–%d · age 锚点 %s", offset+1, offset+len(rawResult.Rows), result.Anchor.Format(time.RFC3339))
-				state := ""
-				if warnings := source.WarningList(); len(warnings) > 0 {
-					state = warnings[0]
+				warnings := source.WarningList()
+				state := fmt.Sprintf("%d 个文件 · 跳过 %d 项 · 警告 %d 项 · 更多→导入报告", len(source.Files), source.SkippedCount, len(warnings))
+				if len(warnings) > 0 {
+					state += " · " + warnings[0]
 				}
 				p.status = fmt.Sprintf("%s · %d/%d 条 · 搜索 %d 处 · 淘汰 %d · %s", scope, len(rawResult.Rows), result.Total, result.SearchCount, result.Dropped, state)
 			} else {
@@ -1048,12 +1050,13 @@ func (w *app) openOfflineTarget(p *page, path string, target *core.Entry, bookma
 	p.selectRow(-1)
 	p.clearSeq, p.offset, p.scroll = 0, 0, 0
 	ctx, job, progress := w.beginPageJob(p, "解压/解码并建立离线索引", 0)
+	importProgress := w.importProgress(p, ctx, job)
 	options := w.config.LogImport
 	done := make(chan struct{})
 	w.importWorkers = append(w.importWorkers, done)
 	go func() {
 		defer close(done)
-		source, err := core.OpenLogProgress(ctx, path, options, progress)
+		source, err := core.OpenLogProgress(ctx, path, options, importProgress)
 		if source != nil {
 			w.importMu.Lock()
 			if w.importSources == nil {

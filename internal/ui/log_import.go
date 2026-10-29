@@ -1,10 +1,12 @@
 package ui
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/atotto/clipboard"
 	"github.com/ebitenui/ebitenui/widget"
@@ -139,6 +141,61 @@ func (w *app) logSource() {
 			pattern := strings.NewReplacer("\t", `\t`, "\n", `\n`, "\r", `\r`).Replace(regexp.QuoteMeta(e.SourceFile))
 			w.applyQuickFilter(p, "source~:"+quoteFilter("^"+pattern+"$"))
 		})))
+}
+
+func (w *app) importReport() {
+	p := w.active()
+	if p == nil || p.offline == nil {
+		w.message("导入报告", "请等待离线日志导入完成。")
+		return
+	}
+	s := p.offline
+	box := w.column(w.diagnosticText(s.Path), w.label(fmt.Sprintf("已导入 %d 个日志文件 · %.1f MiB · 跳过 %d 个条目", len(s.Files), float64(s.Bytes)/(1<<20), s.SkippedCount)))
+	for _, warning := range s.WarningList() {
+		box.AddChild(w.diagnosticText("警告：" + warning))
+	}
+	if len(s.WarningList()) == 0 {
+		box.AddChild(w.muted("未记录解析或解码警告。"))
+	}
+	box.AddChild(w.muted("警告最多保留 20 项；跳过条目列出前 20 项（不支持的格式或 manifest.json）。"))
+	for _, path := range s.SkippedFiles {
+		box.AddChild(w.diagnosticText("跳过：" + path))
+	}
+	w.show("导入报告", box)
+}
+
+func (w *app) importProgress(p *page, ctx context.Context, job uint64) func(core.LogImportProgress) {
+	var last time.Time
+	var stage string
+	return func(state core.LogImportProgress) {
+		if ctx.Err() != nil || state.Stage == stage && time.Since(last) < 150*time.Millisecond {
+			return
+		}
+		stage, last = state.Stage, time.Now()
+		w.post(func() {
+			if p.dead || p.job != job || ctx.Err() != nil {
+				return
+			}
+			if state.Stage == "索引" {
+				p.status = fmt.Sprintf("索引 %d/%d · %.1f%% · %.1f/%.1f MiB", state.FileIndex, state.FileCount, min(100, 100*float64(state.Bytes)/float64(max(state.TotalBytes, 1))), float64(state.Bytes)/(1<<20), float64(state.TotalBytes)/(1<<20))
+			} else {
+				p.status = fmt.Sprintf("%s · 当前输出 %.1f MiB · 已发现 %d 个日志 · 跳过 %d 项", state.Stage, float64(state.Bytes)/(1<<20), state.Logs, state.Skipped)
+			}
+			p.status += " · " + sourcePreview(state.File, 65) + " · 可取消任务"
+		})
+	}
+}
+
+func (w *app) cancelPageJob(p *page) {
+	if p == nil || !p.busy {
+		return
+	}
+	if p.cancel != nil {
+		p.cancel()
+	}
+	p.job++
+	p.busy = false
+	p.status = "任务已取消，正在结束后台工作并清理临时文件"
 }
 
 func closeLogSource(source *core.Offline) {

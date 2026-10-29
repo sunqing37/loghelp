@@ -98,7 +98,7 @@ func (w *app) rebuild() {
 	w.serialInput, w.appInput, w.buffersInput, w.filterInput, w.searchInput, w.commandInput = nil, nil, nil, nil, nil, nil
 	w.sourceLabel, w.resultLabel, w.statusLabel = nil, nil, nil
 	w.logToolsLabel = nil
-	w.logSourceLabel = nil
+	w.logSourceLabel, w.cancelJobButton = nil, nil
 	w.foregroundLabel = nil
 	w.renderDirty = true
 	defer func() {
@@ -239,7 +239,13 @@ func (w *app) rebuild() {
 	}
 	root.AddChild(workspace)
 	w.statusLabel = w.statusText(p.status)
-	root.AddChild(w.inset(w.statusLabel, 6, c.sidebar))
+	if p.shell == nil {
+		w.statusLabel.MaxWidth = float64(max(w.width-w.px(180), w.px(200)))
+		w.cancelJobButton = w.action("取消任务", "quiet", func() { w.cancelPageJob(p) })
+		root.AddChild(w.inset(w.stretchRow(w.statusLabel, w.cancelJobButton), 6, c.sidebar))
+	} else {
+		root.AddChild(w.inset(w.statusLabel, 6, c.sidebar))
+	}
 	w.updateChrome()
 }
 func (w *app) sidebar(p *page) *widget.Container {
@@ -355,14 +361,9 @@ func (w *app) logMenu() {
 	if p == nil {
 		return
 	}
-	w.show("日志操作", w.column(w.button("JSON 格式化查看", w.viewJSON), w.button("日志概览与时间分布", func() { w.logInsights(false) }), w.button("异常事件导航", func() { w.logInsights(true) }), w.button("导出 Android 问题包", w.issueBundle), w.button("关键词触发留证", w.triggerSettings), w.button("排查方案", w.workspaces), w.button("跳到时间…", func() { w.closeModal(); w.jumpTime() }), w.button("取消当前查询", func() {
+	w.show("日志操作", w.column(w.button("导入报告", w.importReport), w.button("JSON 格式化查看", w.viewJSON), w.button("日志概览与时间分布", func() { w.logInsights(false) }), w.button("异常事件导航", func() { w.logInsights(true) }), w.button("导出 Android 问题包", w.issueBundle), w.button("关键词触发留证", w.triggerSettings), w.button("排查方案", w.workspaces), w.button("跳到时间…", func() { w.closeModal(); w.jumpTime() }), w.button("取消当前查询", func() {
 		w.closeModal()
-		if p.cancel != nil {
-			p.cancel()
-		}
-		p.job++
-		p.busy = false
-		p.status = "查询已取消"
+		w.cancelPageJob(p)
 	}), w.button("停止当前标签采集", func() { w.closeModal(); w.stop(p) }), w.muted("设备与共享会话"), w.action("停止共享采集…", "danger", func() { w.closeModal(); w.stopShared() }), w.action("清空设备缓冲区…", "danger", func() { w.closeModal(); w.clearDevice() })))
 }
 func (w *app) updateChrome() {
@@ -447,6 +448,9 @@ func (w *app) updateChrome() {
 			value = value + " · " + sourcePreview(e.SourceFile, 70)
 		}
 		update(w.logSourceLabel, value)
+	}
+	if w.cancelJobButton != nil {
+		w.cancelJobButton.GetWidget().Disabled = !p.busy
 	}
 	update(w.foregroundLabel, w.foregroundFollowStatus())
 	if w.copyDetailButton != nil {

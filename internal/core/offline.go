@@ -15,24 +15,27 @@ import (
 )
 
 type Offline struct {
-	Path       string
-	Files      []string
-	Anchor     time.Time
-	Warnings   []string
-	Bytes      int64
-	warningMu  sync.Mutex
-	files      []os.FileInfo
-	points     []offlinePoint
-	stride     uint64
-	count      int
-	reference  time.Time
-	cacheMu    sync.Mutex
-	indexes    []*offlineQueryIndex
-	closeMu    sync.RWMutex
-	closed     bool
-	tempDir    string
-	origins    map[string]logOrigin
-	jsonFields JSONLFields
+	Path           string
+	Files          []string
+	Anchor         time.Time
+	Warnings       []string
+	SkippedFiles   []string
+	SkippedCount   int
+	Bytes          int64
+	warningMu      sync.Mutex
+	files          []os.FileInfo
+	points         []offlinePoint
+	stride         uint64
+	count          int
+	reference      time.Time
+	cacheMu        sync.Mutex
+	indexes        []*offlineQueryIndex
+	closeMu        sync.RWMutex
+	closed         bool
+	tempDir        string
+	origins        map[string]logOrigin
+	jsonFields     JSONLFields
+	importProgress func(LogImportProgress)
 }
 
 func OpenOffline(ctx context.Context, path string) (*Offline, error) {
@@ -40,10 +43,10 @@ func OpenOffline(ctx context.Context, path string) (*Offline, error) {
 }
 
 func OpenOfflineProgress(ctx context.Context, path string, progress func(int64)) (*Offline, error) {
-	return openOfflineProgress(ctx, path, progress, JSONLFields{})
+	return openOfflineProgress(ctx, path, progress, JSONLFields{}, nil)
 }
 
-func openOfflineProgress(ctx context.Context, path string, progress func(int64), fields JSONLFields) (*Offline, error) {
+func openOfflineProgress(ctx context.Context, path string, progress func(int64), fields JSONLFields, detailed func(LogImportProgress)) (*Offline, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return nil, err
@@ -52,7 +55,7 @@ func openOfflineProgress(ctx context.Context, path string, progress func(int64),
 	if err != nil {
 		return nil, err
 	}
-	o := &Offline{Path: abs, stride: 512, reference: time.Now(), jsonFields: fields}
+	o := &Offline{Path: abs, stride: 512, reference: time.Now(), jsonFields: fields, importProgress: detailed}
 	manifest := abs
 	if info.IsDir() {
 		manifest = filepath.Join(abs, "manifest.json")
@@ -83,6 +86,7 @@ func openOfflineProgress(ctx context.Context, path string, progress func(int64),
 }
 
 func indexOffline(ctx context.Context, o *Offline, progress func(int64)) (*Offline, error) {
+	defer func() { o.importProgress = nil }()
 	if len(o.Files) == 0 {
 		return nil, fmt.Errorf("会话中没有日志片段")
 	}
@@ -169,6 +173,12 @@ func (o *Offline) scan(ctx context.Context, first uint64, build bool, visit func
 		if origin.name == "" {
 			origin.name = path
 		}
+		report := func() {
+			if build && o.importProgress != nil {
+				o.importProgress(LogImportProgress{Stage: "索引", File: origin.name, FileIndex: fileIndex + 1, FileCount: len(o.Files), Bytes: consumed, TotalBytes: o.Bytes, Logs: len(o.Files), Skipped: o.SkippedCount})
+			}
+		}
+		report()
 		f, err := os.Open(path)
 		if err != nil {
 			return err
@@ -237,6 +247,9 @@ func (o *Offline) scan(ctx context.Context, first uint64, build bool, visit func
 			if progress != nil && lineNumber%4096 == 0 {
 				progress(consumed)
 			}
+			if lineNumber%4096 == 0 {
+				report()
+			}
 			if readErr != nil {
 				if readErr != io.EOF {
 					f.Close()
@@ -245,6 +258,7 @@ func (o *Offline) scan(ctx context.Context, first uint64, build bool, visit func
 				break
 			}
 		}
+		report()
 		f.Close()
 	}
 	if progress != nil {

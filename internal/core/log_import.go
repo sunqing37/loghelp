@@ -95,6 +95,12 @@ type logImporter struct {
 	logs     []string
 	warnings []string
 	progress func(int64)
+	origins  map[string]logOrigin
+}
+
+type logOrigin struct {
+	name    string
+	decoded bool
 }
 
 func archiveKind(path string) string {
@@ -143,10 +149,11 @@ func OpenLogProgress(ctx context.Context, path string, options LogImportOptions,
 		return nil, fmt.Errorf("创建日志临时目录：%w", err)
 	}
 	o := &Offline{Path: abs, stride: 512, reference: time.Now(), tempDir: dir, jsonFields: options.JSONLFields}
-	i := &logImporter{ctx: ctx, options: options, dir: dir, progress: progress}
+	i := &logImporter{ctx: ctx, options: options, dir: dir, progress: progress, origins: map[string]logOrigin{abs: {name: abs}}}
 	if err = i.visit(abs, 0, true); err == nil {
 		o.Files = i.logs
 		o.Warnings = i.warnings
+		o.origins = i.origins
 		if len(o.Files) == 0 {
 			err = fmt.Errorf("压缩包中没有支持的日志文件；自定义格式请先在设置中添加解码器")
 		} else {
@@ -225,7 +232,7 @@ func (i *logImporter) supported(name string) bool {
 	return false
 }
 
-func (i *logImporter) entry(name string, reader io.Reader, depth int) error {
+func (i *logImporter) entry(name string, reader io.Reader, depth int, parent string) error {
 	i.entries++
 	if i.entries > maxImportFiles {
 		return fmt.Errorf("压缩包超过 %d 个文件条目限制", maxImportFiles)
@@ -245,10 +252,12 @@ func (i *logImporter) entry(name string, reader io.Reader, depth int) error {
 	if !i.supported(name) {
 		return nil
 	}
+	origin := parent + "!/" + entryName
 	path, err := i.extract(name, reader)
 	if err != nil {
 		return fmt.Errorf("解压 %s：%w", name, err)
 	}
+	i.origins[path] = logOrigin{name: origin}
 	return i.visit(path, depth+1, false)
 }
 
@@ -264,21 +273,26 @@ func (i *logImporter) visit(path string, depth int, direct bool) error {
 		return i.unpack(path, kind, depth)
 	}
 	var err error
+	origin := i.origins[path]
 	if decoder := i.options.decoder(path); decoder != nil {
 		path, err = i.decodeExternal(path, *decoder)
+		origin.decoded = true
 	} else if strings.EqualFold(filepath.Ext(path), ".xlog") {
 		path, err = i.decodeXlog(path)
+		origin.decoded = true
 	} else if !direct && !i.supported(path) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
+	i.origins[path] = origin
 	i.logs = append(i.logs, path)
 	return nil
 }
 
 func (i *logImporter) unpack(path, kind string, depth int) error {
+	parent := i.origins[path].name
 	if kind == ".zip" {
 		z, err := zip.OpenReader(path)
 		if err != nil {
@@ -300,7 +314,7 @@ func (i *logImporter) unpack(path, kind string, depth int) error {
 			if err != nil {
 				return err
 			}
-			err = i.entry(entry.Name, r, depth)
+			err = i.entry(entry.Name, r, depth, parent)
 			closeErr := r.Close()
 			if err = errors.Join(err, closeErr); err != nil {
 				return err
@@ -358,7 +372,7 @@ func (i *logImporter) unpack(path, kind string, depth int) error {
 			if header.Typeflag != tar.TypeReg && header.Typeflag != tar.TypeRegA {
 				return fmt.Errorf("压缩包含非普通文件：%s", header.Name)
 			}
-			if err = i.entry(header.Name, t, depth); err != nil {
+			if err = i.entry(header.Name, t, depth, parent); err != nil {
 				return err
 			}
 			// Bound skipped files as well; tar.Next would otherwise drain them
@@ -368,11 +382,11 @@ func (i *logImporter) unpack(path, kind string, depth int) error {
 			}
 		}
 	}
-	name := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	name := strings.TrimSuffix(filepath.Base(strings.ReplaceAll(parent, "\\", "/")), filepath.Ext(parent))
 	if !i.supported(name) {
 		name += ".log"
 	}
-	return i.entry(name, reader, depth)
+	return i.entry(name, reader, depth, parent)
 }
 
 func (i *logImporter) decodeExternal(path string, decoder LogDecoder) (string, error) {

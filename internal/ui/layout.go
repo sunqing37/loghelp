@@ -98,6 +98,7 @@ func (w *app) rebuild() {
 	w.serialInput, w.appInput, w.buffersInput, w.filterInput, w.searchInput, w.commandInput = nil, nil, nil, nil, nil, nil
 	w.sourceLabel, w.resultLabel, w.statusLabel = nil, nil, nil
 	w.logToolsLabel = nil
+	w.logSourceLabel = nil
 	w.foregroundLabel = nil
 	w.renderDirty = true
 	defer func() {
@@ -203,7 +204,13 @@ func (w *app) rebuild() {
 		w.logToolsLabel = w.muted(p.timeDifferenceText())
 		w.logToolsLabel.MaxWidth = float64(w.px(400))
 		tools := w.stretchRow(w.row(w.action("快速过滤", "quiet", w.quickFilter), w.action("书签", "quiet", w.bookmarks), w.action("时间差", "quiet", w.timeDifference)), w.logToolsLabel)
-		group.AddChild(w.column(header, tools), w.detailPanel)
+		detailHeader := w.column(header, tools)
+		if p.state.File != "" {
+			w.logSourceLabel = w.muted(sourceLineText(p))
+			w.logSourceLabel.MaxWidth = float64(w.px(400))
+			detailHeader.AddChild(w.stretchRow(w.logSourceLabel, w.action("来源", "quiet", w.logSource)))
+		}
+		group.AddChild(detailHeader, w.detailPanel)
 		w.detailSplitter = widget.NewContainer(widget.ContainerOpts.WidgetOpts(widget.WidgetOpts.MinSize(0, w.px(detailDividerHeight)), w.hoverCursor(ebiten.CursorShapeNSResize)))
 		w.detailArea = widget.NewContainer(widget.ContainerOpts.Layout(&detailSplitLayout{app: w}))
 		w.detailArea.AddChild(w.logPanel, w.detailSplitter, group)
@@ -434,6 +441,13 @@ func (w *app) updateChrome() {
 		}
 	}
 	update(w.logToolsLabel, p.timeDifferenceText())
+	if w.logSourceLabel != nil {
+		value := sourceLineText(p)
+		if e := selectedEntry(p); e != nil && e.SourceFile != "" {
+			value = value + " · " + sourcePreview(e.SourceFile, 70)
+		}
+		update(w.logSourceLabel, value)
+	}
 	update(w.foregroundLabel, w.foregroundFollowStatus())
 	if w.copyDetailButton != nil {
 		start, end := p.detailSelection.bounds()
@@ -629,7 +643,7 @@ func (w *app) fieldHints() {
 	if p == nil || p.shell != nil {
 		return
 	}
-	fields := []string{"tag:", "package:", "process:", "message:", "line:", "level:", "age:", "pid:", "tid:", "after:", "before:"}
+	fields := []string{"tag:", "package:", "process:", "message:", "line:", "source:", "level:", "age:", "pid:", "tid:", "after:", "before:"}
 	w.choices("插入过滤字段", fields, func(field string) {
 		value := strings.TrimSpace(w.filterInput.GetText())
 		if value != "" {

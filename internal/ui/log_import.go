@@ -3,8 +3,10 @@ package ui
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
+	"github.com/atotto/clipboard"
 	"github.com/ebitenui/ebitenui/widget"
 	"github.com/ncruces/zenity"
 	"loghelp/internal/core"
@@ -90,6 +92,53 @@ func (w *app) logImportSettings(initial core.LogImportOptions) (*widget.Containe
 		}
 		return options, core.ValidateLogImport(options)
 	}
+}
+
+func sourcePreview(value string, limit int) string {
+	value = strings.NewReplacer("\n", " ", "\r", " ", "\t", " ").Replace(value)
+	runes := []rune(value)
+	if len(runes) > limit {
+		return "…" + string(runes[len(runes)-limit:])
+	}
+	return value
+}
+
+func sourceLineText(p *page) string {
+	e := selectedEntry(p)
+	if e == nil || e.SourceFile == "" {
+		return "来源：选择一条离线日志查看文件与行号"
+	}
+	line := fmt.Sprintf("第 %d 行", e.SourceLine)
+	rows := p.rowMembers(p.selected)
+	if len(rows) > 1 {
+		line = fmt.Sprintf("第 %d–%d 行", e.SourceLine, rows[len(rows)-1].SourceLine)
+	}
+	if e.SourceDecoded {
+		line = "解码后" + line
+	}
+	return line
+}
+
+func (w *app) logSource() {
+	p := w.active()
+	e := selectedEntry(p)
+	if e == nil || e.SourceFile == "" {
+		w.message("日志来源", "先选择一条离线日志。")
+		return
+	}
+	location := e.SourceFile + "\n" + sourceLineText(p)
+	w.show("日志来源", w.column(w.diagnosticText(location),
+		w.muted("!/ 分隔压缩包与内部条目；行号从 1 开始。"),
+		w.button("复制来源与行号", func() {
+			if err := clipboard.WriteAll(location); err != nil {
+				w.message("复制失败", err.Error())
+				return
+			}
+			w.message("复制完成", "已复制来源路径与行号。")
+		}), w.button("仅查看此来源", func() {
+			pattern := strings.NewReplacer("\t", `\t`, "\n", `\n`, "\r", `\r`).Replace(regexp.QuoteMeta(e.SourceFile))
+			w.applyQuickFilter(p, "source~:"+quoteFilter("^"+pattern+"$"))
+		})))
 }
 
 func closeLogSource(source *core.Offline) {

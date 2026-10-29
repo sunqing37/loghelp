@@ -31,6 +31,8 @@ func sameLogSource(a, b *core.Entry) bool {
 	return !a.Event && !b.Event && !a.Time.IsZero() && !b.Time.IsZero() &&
 		a.PID > 0 && a.TID > 0 && a.Tag != "" &&
 		b.Seq == a.Seq+1 &&
+		a.SourceFile == b.SourceFile && a.SourceDecoded == b.SourceDecoded &&
+		(a.SourceFile == "" || b.SourceLine == a.SourceLine+1) &&
 		a.Serial == b.Serial && a.Generation == b.Generation && a.Buffer == b.Buffer &&
 		a.PID == b.PID && a.TID == b.TID && a.Tag == b.Tag && a.Level == b.Level &&
 		a.Package == b.Package && a.Process == b.Process

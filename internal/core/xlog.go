@@ -218,7 +218,7 @@ func (i *logImporter) decodeXlog(path string) (string, error) {
 	blocks := 0
 	warn := func(message string) {
 		if len(i.warnings) < 20 {
-			i.warnings = append(i.warnings, message)
+			i.warnings = append(i.warnings, i.origins[path].name+"："+message)
 		}
 	}
 	for offset < info.Size() {

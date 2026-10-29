@@ -81,6 +81,7 @@ type app struct {
 	support                                                       *support.Session
 	diagnosticErr                                                 error
 	diagnosticWarning                                             string
+	logSourceLabel                                                *widget.Text
 	logToolsLabel                                                 *widget.Text
 	backgroundDiagnostic                                          bool
 	profileScene                                                  string

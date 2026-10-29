@@ -13,23 +13,26 @@ import (
 
 // Entries are immutable after publication so views can share them safely.
 type Entry struct {
-	Seq         uint64    `json:"seq"`
-	RecordedSeq uint64    `json:"-"`
-	Time        time.Time `json:"time,omitempty"`
-	Received    time.Time `json:"received"`
-	Serial      string    `json:"serial,omitempty"`
-	Generation  uint64    `json:"generation,omitempty"`
-	Buffer      string    `json:"buffer,omitempty"`
-	PID         int       `json:"pid,omitempty"`
-	TID         int       `json:"tid,omitempty"`
-	Level       string    `json:"level,omitempty"`
-	Tag         string    `json:"tag,omitempty"`
-	Package     string    `json:"package,omitempty"`
-	Process     string    `json:"process,omitempty"`
-	Message     string    `json:"message"`
-	Raw         string    `json:"raw"`
-	RawBytes    string    `json:"raw_bytes,omitempty"`
-	Event       bool      `json:"event,omitempty"`
+	SourceFile    string    `json:"source_file,omitempty"`
+	SourceLine    int       `json:"source_line,omitempty"`
+	SourceDecoded bool      `json:"source_decoded,omitempty"`
+	Seq           uint64    `json:"seq"`
+	RecordedSeq   uint64    `json:"-"`
+	Time          time.Time `json:"time,omitempty"`
+	Received      time.Time `json:"received"`
+	Serial        string    `json:"serial,omitempty"`
+	Generation    uint64    `json:"generation,omitempty"`
+	Buffer        string    `json:"buffer,omitempty"`
+	PID           int       `json:"pid,omitempty"`
+	TID           int       `json:"tid,omitempty"`
+	Level         string    `json:"level,omitempty"`
+	Tag           string    `json:"tag,omitempty"`
+	Package       string    `json:"package,omitempty"`
+	Process       string    `json:"process,omitempty"`
+	Message       string    `json:"message"`
+	Raw           string    `json:"raw"`
+	RawBytes      string    `json:"raw_bytes,omitempty"`
+	Event         bool      `json:"event,omitempty"`
 }
 
 var threadLine = regexp.MustCompile(`^(?:(\d{4})-)?(\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2}\.\d+)\s+(\d+)\s+(\d+)\s+([VDIWEAF])\s+(.+?)\s*:\s?(.*)$`)
@@ -103,7 +106,7 @@ func ParseLine(raw string, reference time.Time) *Entry {
 }
 
 func (e *Entry) Size() int64 {
-	return int64(240 + len(e.Raw) + len(e.RawBytes) + len(e.Message) + len(e.Tag) + len(e.Package) + len(e.Process))
+	return int64(272 + len(e.SourceFile) + len(e.Raw) + len(e.RawBytes) + len(e.Message) + len(e.Tag) + len(e.Package) + len(e.Process))
 }
 
 func LevelValue(s string) int {

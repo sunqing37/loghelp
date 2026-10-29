@@ -262,7 +262,7 @@ func term(t token, sensitive bool) (Predicate, string, error) {
 			}
 			return e.Time.Before(date)
 		}
-	case "tag", "package", "process", "message", "line":
+	case "tag", "package", "process", "message", "line", "source":
 		if field == "package" && value == "mine" {
 			return fail(fmt.Errorf("独立工具不支持 package:mine，请选择应用包名"))
 		}
@@ -291,6 +291,8 @@ func term(t token, sensitive bool) (Predicate, string, error) {
 		}
 		pred = func(e *Entry, _ time.Time) bool {
 			switch field {
+			case "source":
+				return match(e.SourceFile)
 			case "tag":
 				return match(e.Tag)
 			case "package":

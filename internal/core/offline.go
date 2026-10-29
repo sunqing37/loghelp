@@ -30,8 +30,9 @@ type Offline struct {
 	indexes    []*offlineQueryIndex
 	closeMu    sync.RWMutex
 	closed     bool
-	jsonFields JSONLFields
 	tempDir    string
+	origins    map[string]logOrigin
+	jsonFields JSONLFields
 }
 
 func OpenOffline(ctx context.Context, path string) (*Offline, error) {
@@ -164,6 +165,10 @@ func (o *Offline) scan(ctx context.Context, first uint64, build bool, visit func
 	seq, consumed := point.Seq-1, point.Consumed
 	for fileIndex := point.File; fileIndex < len(o.Files); fileIndex++ {
 		path := o.Files[fileIndex]
+		origin := o.origins[path]
+		if origin.name == "" {
+			origin.name = path
+		}
 		f, err := os.Open(path)
 		if err != nil {
 			return err
@@ -200,7 +205,7 @@ func (o *Offline) scan(ctx context.Context, first uint64, build bool, visit func
 			offset = pointOffset(fileIndex, point) + counter.count - int64(reader.Buffered())
 			consumed = fileStart + offset
 			if truncated {
-				o.warn(fmt.Sprintf("%s 第 %d 行超过 16 MiB，显示截断预览；原始文件未修改", filepath.Base(path), lineNumber+1))
+				o.warn(fmt.Sprintf("%s 第 %d 行超过 16 MiB，显示截断预览；原始文件未修改", origin.name, lineNumber+1))
 			}
 			lineNumber++
 			if len(line) > 0 {
@@ -210,11 +215,12 @@ func (o *Offline) scan(ctx context.Context, first uint64, build bool, visit func
 					var decodeErr error
 					e, decodeErr = parseJSONLine(raw, o.reference, o.jsonFields)
 					if decodeErr != nil {
-						o.warn(fmt.Sprintf("%s 第 %d 行：%s", filepath.Base(path), lineNumber, decodeErr))
+						o.warn(fmt.Sprintf("%s 第 %d 行：%s", origin.name, lineNumber, decodeErr))
 					}
 				} else {
 					e = ParseLine(raw, o.reference)
 				}
+				e.SourceFile, e.SourceLine, e.SourceDecoded = origin.name, lineNumber, origin.decoded
 				seq++
 				e.Seq = seq
 				if build {

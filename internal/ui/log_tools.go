@@ -85,6 +85,7 @@ func (w *app) quickFilter() {
 		add(" TID", "tid", strconv.Itoa(e.TID), false)
 	}
 	add("应用", "package", e.Package, true)
+	add("来源文件", "source", e.SourceFile, true)
 	w.show("快速过滤", box)
 }
 

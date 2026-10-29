@@ -18,6 +18,7 @@ import (
 )
 
 type LogImportOptions struct {
+	JSONLFields JSONLFields  `json:"jsonl_fields,omitempty"`
 	XlogKeyFile string       `json:"xlog_key_file,omitempty"`
 	XlogKeyEnv  string       `json:"xlog_key_env,omitempty"`
 	Decoders    []LogDecoder `json:"decoders,omitempty"`
@@ -36,6 +37,11 @@ type LogDecoder struct {
 }
 
 func ValidateLogImport(options LogImportOptions) error {
+	for _, name := range []string{options.JSONLFields.Message, options.JSONLFields.Level, options.JSONLFields.Time} {
+		if len(name) > 256 || strings.ContainsAny(name, "\x00\r\n\t") {
+			return fmt.Errorf("JSONL 字段名不能超过 256 字节或包含控制字符")
+		}
+	}
 	if err := ValidateXlogKeySource(options); err != nil {
 		return err
 	}
@@ -123,7 +129,7 @@ func OpenLogProgress(ctx context.Context, path string, options LogImportOptions,
 		return nil, err
 	}
 	if info.IsDir() || archiveKind(path) == "" && !strings.EqualFold(filepath.Ext(path), ".xlog") && options.decoder(path) == nil {
-		return OpenOfflineProgress(ctx, path, progress)
+		return openOfflineProgress(ctx, path, progress, options.JSONLFields)
 	}
 	if err = ValidateLogImport(options); err != nil {
 		return nil, err
@@ -136,7 +142,7 @@ func OpenLogProgress(ctx context.Context, path string, options LogImportOptions,
 	if err != nil {
 		return nil, fmt.Errorf("创建日志临时目录：%w", err)
 	}
-	o := &Offline{Path: abs, stride: 512, reference: time.Now(), tempDir: dir}
+	o := &Offline{Path: abs, stride: 512, reference: time.Now(), tempDir: dir, jsonFields: options.JSONLFields}
 	i := &logImporter{ctx: ctx, options: options, dir: dir, progress: progress}
 	if err = i.visit(abs, 0, true); err == nil {
 		o.Files = i.logs

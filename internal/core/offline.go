@@ -15,22 +15,23 @@ import (
 )
 
 type Offline struct {
-	Path      string
-	Files     []string
-	Anchor    time.Time
-	Warnings  []string
-	Bytes     int64
-	warningMu sync.Mutex
-	files     []os.FileInfo
-	points    []offlinePoint
-	stride    uint64
-	count     int
-	reference time.Time
-	cacheMu   sync.Mutex
-	indexes   []*offlineQueryIndex
-	closeMu   sync.RWMutex
-	closed    bool
-	tempDir   string
+	Path       string
+	Files      []string
+	Anchor     time.Time
+	Warnings   []string
+	Bytes      int64
+	warningMu  sync.Mutex
+	files      []os.FileInfo
+	points     []offlinePoint
+	stride     uint64
+	count      int
+	reference  time.Time
+	cacheMu    sync.Mutex
+	indexes    []*offlineQueryIndex
+	closeMu    sync.RWMutex
+	closed     bool
+	jsonFields JSONLFields
+	tempDir    string
 }
 
 func OpenOffline(ctx context.Context, path string) (*Offline, error) {
@@ -38,6 +39,10 @@ func OpenOffline(ctx context.Context, path string) (*Offline, error) {
 }
 
 func OpenOfflineProgress(ctx context.Context, path string, progress func(int64)) (*Offline, error) {
+	return openOfflineProgress(ctx, path, progress, JSONLFields{})
+}
+
+func openOfflineProgress(ctx context.Context, path string, progress func(int64), fields JSONLFields) (*Offline, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return nil, err
@@ -46,7 +51,7 @@ func OpenOfflineProgress(ctx context.Context, path string, progress func(int64))
 	if err != nil {
 		return nil, err
 	}
-	o := &Offline{Path: abs, stride: 512, reference: time.Now()}
+	o := &Offline{Path: abs, stride: 512, reference: time.Now(), jsonFields: fields}
 	manifest := abs
 	if info.IsDir() {
 		manifest = filepath.Join(abs, "manifest.json")
@@ -202,17 +207,11 @@ func (o *Offline) scan(ctx context.Context, first uint64, build bool, visit func
 				var e *Entry
 				raw := strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")
 				if strings.EqualFold(filepath.Ext(path), ".jsonl") {
-					var parsed Entry
-					if decodeErr := json.Unmarshal([]byte(raw), &parsed); decodeErr != nil {
-						if readErr == io.EOF {
-							o.warn(fmt.Sprintf("%s 第 %d 行尾部损坏：保留此前有效条目", filepath.Base(path), lineNumber))
-							break
-						}
-						parsed = *ParseLine(raw, o.reference)
-						o.warn(fmt.Sprintf("%s 第 %d 行无法解析，按原文展示", filepath.Base(path), lineNumber))
+					var decodeErr error
+					e, decodeErr = parseJSONLine(raw, o.reference, o.jsonFields)
+					if decodeErr != nil {
+						o.warn(fmt.Sprintf("%s 第 %d 行：%s", filepath.Base(path), lineNumber, decodeErr))
 					}
-					parsed.RecordedSeq = parsed.Seq
-					e = &parsed
 				} else {
 					e = ParseLine(raw, o.reference)
 				}

@@ -12,9 +12,14 @@ import (
 )
 
 func (w *app) logImportSettings(initial core.LogImportOptions) (*widget.Container, func() (core.LogImportOptions, error)) {
+	messageField := w.input(initial.JSONLFields.Message, "留空自动识别 message / msg / log / text", nil, nil)
+	levelField := w.input(initial.JSONLFields.Level, "留空自动识别 level / severity / log_level", nil, nil)
+	timeField := w.input(initial.JSONLFields.Time, "留空自动识别 time / timestamp / @timestamp / ts", nil, nil)
 	keyFile := w.input(initial.XlogKeyFile, "保存 64 位十六进制私钥的文本文件", nil, nil)
 	keyEnv := w.input(initial.XlogKeyEnv, "或填写保存私钥的环境变量名称", nil, nil)
 	box := w.column(w.heading("日志解压与解码"),
+		w.diagnosticText("普通 JSONL 保留完整原文，自动识别常见字段。可指定区分大小写的顶层字段名（不是嵌套路径）；保存后重新打开文件生效，不影响 LogHelp 录制格式。"),
+		w.inputRow("JSONL 正文字段", messageField), w.inputRow("JSONL 级别字段", levelField), w.inputRow("JSONL 时间字段", timeField),
 		w.diagnosticText("内置 ZIP、TAR、Gzip、Bzip2、Zstd 解压和腾讯 Mars xlog 解码，不依赖 Python。加密 xlog 需原配私钥；未加密文件无需配置。"),
 		w.inputRow("Mars 私钥文件", keyFile),
 		w.row(w.button("选择私钥文件", func() {
@@ -69,6 +74,7 @@ func (w *app) logImportSettings(initial core.LogImportOptions) (*widget.Containe
 		}))
 	return box, func() (core.LogImportOptions, error) {
 		options := core.LogImportOptions{XlogKeyFile: strings.TrimSpace(keyFile.GetText()), XlogKeyEnv: strings.TrimSpace(keyEnv.GetText())}
+		options.JSONLFields = core.JSONLFields{Message: strings.TrimSpace(messageField.GetText()), Level: strings.TrimSpace(levelField.GetText()), Time: strings.TrimSpace(timeField.GetText())}
 		for _, card := range cards {
 			if card.removed {
 				continue

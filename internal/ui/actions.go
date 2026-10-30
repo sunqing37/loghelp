@@ -750,6 +750,7 @@ Ctrl/Cmd+Shift+P 暂停，Ctrl/Cmd+End 到末尾。
 终端固定设备，断线不重放命令；历史默认关闭。
 详情可拖选文字，Ctrl/Cmd+C 复制选中、Ctrl/Cmd+A 全选。
 Shift+点击扩展选区，Esc 清除；“复制全部”保留完整原文。
+详情“复制 JSON”提取并格式化第一个有效 JSON 对象或数组，不含日志前后缀。
 详情 Shift+滚轮水平浏览，支持换行和拖动分隔条调高。
 Linux 剪贴板需系统的 xclip/xsel 之一。
 中文字体使用系统字体，或 LOGHELP_FONT 指定 TTF/TTC。`)

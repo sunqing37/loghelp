@@ -108,7 +108,7 @@ func (w *app) rebuild() {
 	}()
 	p := w.active()
 	w.startButton, w.followButton, w.recordButton, w.pauseButton = nil, nil, nil, nil
-	w.copyDetailButton = nil
+	w.copyDetailButton, w.copyJSONButton = nil, nil
 	w.connectionLabel = nil
 	c := w.colors()
 	root := widget.NewContainer(widget.ContainerOpts.BackgroundImage(uiimage.NewNineSliceColor(c.bg)), widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(1), widget.GridLayoutOpts.Stretch([]bool{true}, []bool{false, true, false}))))
@@ -192,13 +192,14 @@ func (w *app) rebuild() {
 			wrapKind = "active"
 		}
 		w.copyDetailButton = w.action("复制选中", "quiet", w.copyDetailSelection)
+		w.copyJSONButton = w.action("复制 JSON", "quiet", w.copySelectedJSON)
 		header := w.stretchRow(w.row(w.muted("日志详情"), w.muted("拖选文字 · Ctrl/Cmd+C 复制")), w.row(w.action("换行", wrapKind, func() {
 			w.syncInputs()
 			w.config.Wrap = !w.config.Wrap
 			p.detailScroll, p.detailX = 0, 0
 			w.rebuild()
 			w.save()
-		}), w.copyDetailButton, w.action("复制全部", "quiet", w.copySelected), w.action("上下文", "quiet", w.context)))
+		}), w.copyDetailButton, w.copyJSONButton, w.action("复制全部", "quiet", w.copySelected), w.action("上下文", "quiet", w.context)))
 		w.detailPanel = widget.NewContainer(widget.ContainerOpts.WidgetOpts(widget.WidgetOpts.MinSize(w.px(200), w.px(minDetailBody))))
 		group := widget.NewContainer(widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(1), widget.GridLayoutOpts.Stretch([]bool{true}, []bool{false, true}), widget.GridLayoutOpts.Spacing(0, w.px(8)))))
 		w.logToolsLabel = w.muted(p.timeDifferenceText())
@@ -456,6 +457,9 @@ func (w *app) updateChrome() {
 	if w.copyDetailButton != nil {
 		start, end := p.detailSelection.bounds()
 		w.copyDetailButton.GetWidget().Disabled = p.selected < 0 || p.selected >= len(p.result.Rows) || end <= start || p.detailCache.entry == nil || end > len(p.detailCache.entry.Raw)
+	}
+	if w.copyJSONButton != nil {
+		w.copyJSONButton.GetWidget().Disabled = selectedEntry(p) == nil
 	}
 	if w.recordButton != nil {
 		w.recordButton.GetWidget().Disabled = p.collector == nil

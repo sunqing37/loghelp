@@ -159,6 +159,22 @@ func (w *app) showInsights(s logSource, r core.LogOverview, eventsOnly bool, pag
 	w.show("日志概览与异常导航", box)
 }
 
+func (w *app) copySelectedJSON() {
+	p := w.active()
+	if selectedEntry(p) == nil {
+		w.message("复制 JSON", "请先选择包含 JSON 的日志。")
+		return
+	}
+	n, err := core.ParseLogJSON(p.detailEntry(p.selected).Raw)
+	if err != nil {
+		w.message("复制 JSON", err.Error())
+		return
+	}
+	if err := clipboard.WriteAll(n.Pretty()); err != nil {
+		w.message("复制失败", err.Error())
+	}
+}
+
 func (w *app) viewJSON() {
 	p := w.active()
 	if selectedEntry(p) == nil {

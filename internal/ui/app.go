@@ -119,7 +119,7 @@ type app struct {
 	sourceLabel, resultLabel                                      *widget.Text
 	connectionLabel                                               *widget.Text
 	startButton, followButton, recordButton, pauseButton          *widget.Button
-	copyDetailButton                                              *widget.Button
+	copyDetailButton, copyJSONButton                              *widget.Button
 	startActive, followActive, recordActive, pauseActive          bool
 	rowHeader                                                     *widget.Container
 	tableX                                                        int

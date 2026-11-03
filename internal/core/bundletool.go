@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -58,13 +59,54 @@ func findBundletool(options AppInstallOptions) (*bundletoolRunner, error) {
 }
 
 func (r *bundletoolRunner) run(ctx context.Context, args ...string) error {
+	return r.runProgress(ctx, nil, args...)
+}
+
+func (r *bundletoolRunner) runProgress(ctx context.Context, progress func(string), args ...string) error {
 	args = append([]string{"-Dfile.encoding=UTF-8", "-jar", r.jar}, args...)
 	cmd := exec.CommandContext(ctx, r.java, args...)
 	configureProcess(cmd)
-	out := &limitedBuffer{limit: 1 << 20}
-	cmd.Stdout, cmd.Stderr = out, out
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("%w：%s", err, strings.TrimSpace(out.b.String()))
+	_, err := runInstallCommand(cmd, progress)
+	return err
+}
+
+func (r *bundletoolRunner) extractInstallGroup(ctx context.Context, archive, spec, output string, progress func(string)) (installGroup, error) {
+	if err := r.runProgress(ctx, progress, "extract-apks", "--apks="+archive, "--device-spec="+spec, "--output-dir="+output); err != nil {
+		return installGroup{}, fmt.Errorf("选择设备适配 APK %s：%w", filepath.Base(archive), err)
 	}
-	return nil
+	var apks []installAPK
+	err := filepath.WalkDir(output, func(file string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("bundletool 输出包含符号链接：%s", file)
+		}
+		if entry.IsDir() || !strings.EqualFold(filepath.Ext(file), ".apk") {
+			return nil
+		}
+		if len(apks) >= 512 {
+			return fmt.Errorf("单个安装包最多支持 512 个 APK")
+		}
+		apk, err := inspectInstallAPK(file, filepath.Base(file))
+		if err != nil {
+			return err
+		}
+		apks = append(apks, apk)
+		return nil
+	})
+	if err != nil {
+		return installGroup{}, fmt.Errorf("读取 bundletool 输出：%w", err)
+	}
+	groups, err := groupInstallAPKs(apks)
+	if err != nil {
+		return installGroup{}, err
+	}
+	if len(groups) != 1 {
+		return installGroup{}, fmt.Errorf("APKS 需包含一个应用，设备适配结果为 %d 个应用", len(groups))
+	}
+	return groups[0], nil
 }

@@ -19,6 +19,15 @@ type AppInstallOptions struct {
 	BundletoolPath string `json:"bundletool_path,omitempty"`
 }
 
+// Completed counts applications whose APKs and optional OBB files all finished.
+// Total is zero while preparing inputs; it is not a byte-transfer percentage.
+type AppInstallProgress struct {
+	Message                        string
+	Completed, Total               int
+	CurrentApp, CurrentFile, Stage string
+	SentBytes, TotalBytes          int64
+}
+
 func IsAppInstallPath(name string) bool {
 	switch strings.ToLower(filepath.Ext(name)) {
 	case ".apk", ".aab", ".apks", ".xapk", ".apkm", ".multi-apk":
@@ -46,17 +55,23 @@ type installPlan struct {
 
 // All work is scoped to a fixed serial, including bundletool's ADB calls.
 // Preparation of every input completes before the first device mutation.
-func (a *ADB) InstallApplications(ctx context.Context, serial string, paths []string, options AppInstallOptions, progress func(string)) (resultErr error) {
+func (a *ADB) InstallApplications(ctx context.Context, serial string, paths []string, options AppInstallOptions, progress func(AppInstallProgress)) (resultErr error) {
 	if a == nil || strings.TrimSpace(serial) == "" {
 		return fmt.Errorf("请先选择在线安装设备并配置 ADB")
 	}
 	if len(paths) == 0 || len(paths) > 128 {
 		return fmt.Errorf("请选择 1–128 个安装文件")
 	}
+	stateProgress := AppInstallProgress{}
 	report := func(s string) {
+		stateProgress.Message = s
 		if progress != nil {
-			progress(s)
+			progress(stateProgress)
 		}
+	}
+	commandProgress := func(stage string) func(string) {
+		report(stage)
+		return func(line string) { report(stage + "\n" + line) }
 	}
 	report("正在确认目标设备…")
 	state, err := a.Run(ctx, serial, "get-state")
@@ -123,6 +138,7 @@ func (a *ADB) InstallApplications(ctx context.Context, serial string, paths []st
 		return err
 	}
 	plan.groups = append(groups, plan.groups...)
+	stateProgress.Total = len(plan.groups) + len(plan.bundles)
 	var runner *bundletoolRunner
 	if len(plan.bundles) > 0 {
 		runner, err = findBundletool(options)
@@ -144,14 +160,36 @@ func (a *ADB) InstallApplications(ctx context.Context, serial string, paths []st
 	}
 	for i, file := range plan.bundles {
 		if strings.EqualFold(filepath.Ext(file), ".aab") {
-			report("正在从 AAB 生成设备匹配的 APK（调试签名）…")
 			output := filepath.Join(dir, fmt.Sprintf("bundle-%d.apks", i))
-			if err := runner.run(ctx, "build-apks", "--bundle="+file, "--output="+output, "--connected-device", "--device-id="+serial, "--adb="+a.Path); err != nil {
+			if err := runner.runProgress(ctx, commandProgress("正在从 AAB 生成设备匹配的 APK（调试签名）："+filepath.Base(file)), "build-apks", "--bundle="+file, "--output="+output, "--connected-device", "--device-id="+serial, "--adb="+a.Path); err != nil {
 				return fmt.Errorf("AAB 转换失败（需可用的调试签名密钥）：%w", err)
 			}
 			plan.bundles[i] = output
 		}
 	}
+	// Let bundletool select device-compatible APKs, then upload them through the
+	// same measured install session as ordinary APKs (all preparation first).
+	if len(plan.bundles) > 0 {
+		report("正在读取设备配置以选择 APKS 分包…")
+		spec := filepath.Join(dir, "device-spec.json")
+		if err := runner.runProgress(ctx, commandProgress("正在读取设备配置…"), "get-device-spec", "--output="+spec, "--device-id="+serial, "--adb="+a.Path); err != nil {
+			return fmt.Errorf("读取 bundletool 设备配置：%w", err)
+		}
+		for i, file := range plan.bundles {
+			group, err := runner.extractInstallGroup(ctx, file, spec, filepath.Join(dir, fmt.Sprintf("selected-%d", i)), commandProgress("正在提取设备匹配的 APK："+filepath.Base(file)))
+			if err != nil {
+				return err
+			}
+			plan.groups = append(plan.groups, group)
+		}
+	}
+	// Shell-v2 carries binary stdin, EOF and a remote exit status reliably. Keep
+	// the previous ADB install/push path for older devices or ADB versions.
+	features, featureErr := a.Run(ctx, serial, "features")
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	measured := featureErr == nil && hasInstallFeature(features, "shell_v2")
 	completed := 0
 	defer func() {
 		if resultErr != nil && completed > 0 {
@@ -163,39 +201,49 @@ func (a *ADB) InstallApplications(ctx context.Context, serial string, paths []st
 			return err
 		}
 		pkg := g.apks[0].id.Package
-		report(fmt.Sprintf("正在安装 %s（%d 个 APK）…", pkg, len(g.apks)))
-		args := []string{"install", "-r"}
-		if len(g.apks) > 1 {
-			args[0] = "install-multiple"
+		stateProgress.CurrentApp = pkg
+		stateProgress.CurrentFile, stateProgress.Stage = "", "准备安装"
+		stateProgress.SentBytes, stateProgress.TotalBytes = 0, 0
+		report(fmt.Sprintf("正在安装 %d/%d：%s（%d 个 APK）", stateProgress.Completed+1, stateProgress.Total, pkg, len(g.apks)))
+		install := a.installMeasuredAPKs
+		if !measured {
+			install = a.installLegacyAPKs
 		}
-		for _, apk := range g.apks {
-			args = append(args, apk.path)
-		}
-		out, err := a.Run(ctx, serial, args...)
-		if err != nil {
-			return fmt.Errorf("安装 %s 失败：%w\n%s", pkg, err, installFailureHint(out))
-		}
-		if !installOutputSucceeded(out) {
-			return fmt.Errorf("安装 %s 未返回成功状态：%s\n%s", pkg, out, installFailureHint(out))
+		if err := install(ctx, serial, g.apks, func(stage, file string, sent, total int64) {
+			stateProgress.Stage, stateProgress.CurrentFile = stage, file
+			stateProgress.SentBytes, stateProgress.TotalBytes = sent, total
+			report(stage + " · " + pkg)
+		}); err != nil {
+			return fmt.Errorf("安装 %s 失败：%w\n%s", pkg, err, installFailureHint(err.Error()))
 		}
 		completed++
 		for _, obb := range g.obbs {
-			report("应用已安装，正在复制 OBB：" + obb.name)
+			stateProgress.Stage, stateProgress.CurrentFile = "复制附加文件", obb.name
+			stateProgress.SentBytes, stateProgress.TotalBytes = 0, 0
+			report("应用已安装，正在准备复制 OBB：" + obb.name)
 			target := "/sdcard/Android/obb/" + pkg
 			if _, err := a.Run(ctx, serial, "shell", "mkdir", "-p", target); err != nil {
 				return fmt.Errorf("应用已安装，但创建 OBB 目录失败（检查设备存储权限）：%w", err)
 			}
-			if _, err := a.Run(ctx, serial, "push", obb.local, target+"/"+obb.name); err != nil {
-				return fmt.Errorf("应用已安装，但复制 OBB %s 失败：%w", obb.name, err)
+			var copyErr error
+			if !measured {
+				stateProgress.Stage = "旧版设备通过 ADB 复制 OBB，无法提供字节进度"
+				report(stateProgress.Stage + "：" + obb.name)
+				_, copyErr = runInstallCommand(a.Command(ctx, serial, "push", obb.local, target+"/"+obb.name), commandProgress("正在复制 OBB："+obb.name))
+			} else {
+				copyErr = a.installMeasuredOBB(ctx, serial, obb.local, target+"/"+obb.name, func(stage string, sent, total int64) {
+					stateProgress.Stage = stage
+					stateProgress.SentBytes, stateProgress.TotalBytes = sent, total
+					report("应用已安装 · " + stage + "：" + obb.name)
+				})
+			}
+			if copyErr != nil {
+				return fmt.Errorf("应用已安装，但复制 OBB %s 失败：%w", obb.name, copyErr)
 			}
 		}
-	}
-	for _, file := range plan.bundles {
-		report("正在通过 bundletool 安装：" + filepath.Base(file))
-		if err := runner.run(ctx, "install-apks", "--apks="+file, "--device-id="+serial, "--adb="+a.Path); err != nil {
-			return fmt.Errorf("安装 APKS 失败：%w\n%s", err, installFailureHint(err.Error()))
-		}
-		completed++
+		stateProgress.Completed++
+		stateProgress.Stage = "安装完成"
+		report("已完成：" + pkg)
 	}
 	report(fmt.Sprintf("安装完成：%d 项应用安装，设备 %s", completed, serial))
 	return nil

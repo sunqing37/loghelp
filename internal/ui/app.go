@@ -616,6 +616,7 @@ ready:
 		}
 	}
 	w.applySystemTheme()
+	w.updateAppInstallProgress()
 	allowInput := ebiten.IsFocused() && !w.backgroundDiagnostic && !w.fileDialogOpen
 	if w.columnDrag.key != "" && (!allowInput || w.modal) {
 		w.finishColumnResize()

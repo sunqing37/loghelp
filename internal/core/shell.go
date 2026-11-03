@@ -16,12 +16,13 @@ import (
 // Shell-v2 is the ADB protocol itself, not a host shell wrapper. This gives
 // Windows and Unix the same remote PTY, including signals and resize events.
 type Shell struct {
-	conn      net.Conn
-	writeMu   sync.Mutex
-	readMu    sync.Mutex
-	remaining []byte
-	closed    sync.Once
-	ExitCode  int
+	conn         net.Conn
+	writeMu      sync.Mutex
+	readMu       sync.Mutex
+	remaining    []byte
+	closed       sync.Once
+	ExitCode     int
+	writeTimeout time.Duration
 }
 
 func serverAddress() (string, error) {
@@ -119,7 +120,11 @@ func writeAll(w io.Writer, p []byte) error {
 func (s *Shell) packet(id byte, payload []byte) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	s.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	timeout := s.writeTimeout
+	if timeout <= 0 {
+		timeout = 5 * time.Second
+	}
+	s.conn.SetWriteDeadline(time.Now().Add(timeout))
 	defer s.conn.SetWriteDeadline(time.Time{})
 	header := make([]byte, 5)
 	header[0] = id

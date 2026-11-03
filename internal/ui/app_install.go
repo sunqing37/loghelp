@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	uiimage "github.com/ebitenui/ebitenui/image"
 	"github.com/ebitenui/ebitenui/widget"
 	"github.com/ncruces/zenity"
 	"loghelp/internal/core"
@@ -15,14 +16,21 @@ import (
 )
 
 type appInstaller struct {
-	paths  []string
-	device core.Device
-	busy   bool
-	cancel context.CancelFunc
-	status string
-	label  *widget.Text
-	body   *widget.Container
-	owner  *widget.Window
+	paths                        []string
+	device                       core.Device
+	busy                         bool
+	cancel                       context.CancelFunc
+	status                       string
+	label                        *widget.Text
+	body                         *widget.Container
+	owner                        *widget.Window
+	progress                     core.AppInstallProgress
+	progressLabel                *widget.Text
+	progressBar                  *widget.ProgressBar
+	currentLabel                 *widget.Text
+	currentBar                   *widget.ProgressBar
+	started, finished, refreshed time.Time
+	cancelling                   bool
 }
 
 func (w *app) openAppInstaller() {
@@ -52,6 +60,8 @@ func (w *app) acceptInstallPaths(paths []string) {
 		w.installer = &appInstaller{}
 	}
 	w.installer.paths = append([]string(nil), paths...)
+	w.installer.started, w.installer.finished = time.Time{}, time.Time{}
+	w.installer.progress = core.AppInstallProgress{}
 	w.installer.status = "安装文件已就绪；多个 APK 自动按应用归组，base 与 splits 一起安装。"
 	w.renderAppInstaller()
 }
@@ -67,6 +77,8 @@ func (w *app) renderAppInstaller() {
 		box.AddChild(w.row(w.button("选择目标设备…", func() {
 			w.deviceChoices("选择安装设备", "未发现在线设备，连接并授权后点击刷新。", func(d core.Device) bool { return d.State == "device" }, func(d core.Device) {
 				s.device = d
+				s.started, s.finished = time.Time{}, time.Time{}
+				s.progress = core.AppInstallProgress{}
 				w.renderAppInstaller()
 			})
 		}), w.button("选择安装文件…", func() {
@@ -81,6 +93,18 @@ func (w *app) renderAppInstaller() {
 		}), w.button("安装工具设置…", w.appInstallSettings)))
 	}
 	s.label = w.diagnosticText(s.status)
+	s.progressLabel, s.progressBar, s.currentLabel, s.currentBar = nil, nil, nil, nil
+	if !s.started.IsZero() {
+		s.progressLabel = w.diagnosticText(w.appInstallProgressText(s))
+		box.AddChild(s.progressLabel)
+		if s.progress.Total > 0 {
+			s.progressBar = w.appInstallBar(s.progress.Total, s.progress.Completed)
+			box.AddChild(s.progressBar)
+		}
+		s.currentLabel = w.diagnosticText(w.currentAppInstallText(s))
+		s.currentBar = w.appInstallBar(1000, appInstallTransferValue(s.progress))
+		box.AddChild(s.currentLabel, s.currentBar)
+	}
 	box.AddChild(s.label)
 	box.AddChild(w.diagnosticText("支持 APK、多 APK / split APK、AAB、APKS、XAPK、APKM、multi-apk。可直接拖入安装文件（最多 128 个）；再次选择或拖入会替换文件列表。"))
 	if len(s.paths) == 0 {
@@ -98,6 +122,7 @@ func (w *app) renderAppInstaller() {
 	if s.busy {
 		primary = w.action("取消安装", "danger", func() {
 			if s.cancel != nil {
+				s.cancelling = true
 				s.cancel()
 				w.setAppInstallStatus(s, "正在取消；设备已经完成的安装或文件写入不会回滚。")
 			}
@@ -109,6 +134,108 @@ func (w *app) renderAppInstaller() {
 	}
 	w.showDialog("安装应用", box, primary)
 	s.owner = w.modalWindow
+}
+
+func (w *app) appInstallBar(total, current int) *widget.ProgressBar {
+	c := w.colors()
+	return widget.NewProgressBar(
+		widget.ProgressBarOpts.WidgetOpts(widget.WidgetOpts.MinSize(w.px(240), w.px(8))),
+		widget.ProgressBarOpts.Images(
+			&widget.ProgressBarImage{Idle: uiimage.NewNineSliceColor(c.line)},
+			&widget.ProgressBarImage{Idle: uiimage.NewNineSliceColor(c.accent)}),
+		widget.ProgressBarOpts.Values(0, total, current))
+}
+
+func appInstallTransferValue(progress core.AppInstallProgress) int {
+	if progress.TotalBytes <= 0 {
+		return 0
+	}
+	return max(0, min(1000, int(float64(progress.SentBytes)/float64(progress.TotalBytes)*1000)))
+}
+
+func (w *app) currentAppInstallText(s *appInstaller) string {
+	p := s.progress
+	if p.CurrentApp == "" {
+		if !s.busy {
+			return "安装包准备未完成，结果见下方"
+		}
+		return "当前应用：正在准备安装包…"
+	}
+	stage := p.Stage
+	if s.cancelling && s.busy {
+		stage = "正在取消…"
+	} else if !s.busy && p.Stage != "安装完成" {
+		stage = "任务已停止，结果见下方"
+	}
+	value := "当前应用：" + p.CurrentApp + "\n" + stage
+	if p.CurrentFile != "" {
+		value += "\n" + p.CurrentFile
+	}
+	if p.TotalBytes > 0 {
+		value += fmt.Sprintf("\n发送进度 %.1f%% · %.2f / %.2f MiB", float64(appInstallTransferValue(p))/10, float64(p.SentBytes)/(1<<20), float64(p.TotalBytes)/(1<<20))
+	}
+	return value
+}
+
+func (w *app) appInstallProgressText(s *appInstaller) string {
+	end := s.finished
+	if end.IsZero() {
+		end = time.Now()
+	}
+	elapsed := max(int(end.Sub(s.started).Seconds()), 0)
+	state := "已结束"
+	if s.busy {
+		state = "正在处理" + strings.Repeat("·", 1+int(time.Since(s.started).Milliseconds()/400)%3)
+		if s.cancelling {
+			state = "正在取消…"
+		}
+	}
+	count := "正在准备安装文件"
+	if !s.busy {
+		count = "准备阶段已结束"
+	}
+	if s.progress.Total > 0 {
+		count = fmt.Sprintf("已完成 %d/%d 项应用（含附加文件）", s.progress.Completed, s.progress.Total)
+	}
+	return fmt.Sprintf("%s  ·  %s  ·  耗时 %02d:%02d", state, count, elapsed/60, elapsed%60)
+}
+
+func (w *app) updateAppInstallProgress() {
+	s := w.installer
+	if s == nil || !s.busy || s.owner != w.modalWindow || s.progressLabel == nil || time.Since(s.refreshed) < 250*time.Millisecond {
+		return
+	}
+	s.refreshed = time.Now()
+	s.progressLabel.Label = w.wirelessText(w.appInstallProgressText(s), min(w.px(620), w.width-w.px(128)))
+	if s.currentLabel != nil {
+		s.currentLabel.Label = w.wirelessText(w.currentAppInstallText(s), min(w.px(620), w.width-w.px(128)))
+	}
+	s.body.RequestRelayout()
+	s.owner.RequestRelayout()
+	w.renderDirty = true
+}
+
+func (w *app) setAppInstallProgress(s *appInstaller, progress core.AppInstallProgress) {
+	if s.cancelling {
+		return // Queued process output must not overwrite the cancellation notice.
+	}
+	previousTotal := s.progress.Total
+	s.progress = progress
+	w.setAppInstallStatus(s, progress.Message)
+	if w.modalWindow != s.owner {
+		return
+	}
+	if previousTotal != progress.Total {
+		w.renderAppInstaller()
+	} else {
+		if s.progressBar != nil {
+			s.progressBar.SetCurrent(progress.Completed)
+		}
+		if s.currentBar != nil {
+			s.currentBar.SetCurrent(appInstallTransferValue(progress))
+			s.currentLabel.Label = w.wirelessText(w.currentAppInstallText(s), min(w.px(620), w.width-w.px(128)))
+		}
+	}
 }
 
 func (w *app) setAppInstallStatus(s *appInstaller, status string) {
@@ -136,6 +263,9 @@ func (w *app) startAppInstall() {
 	options := w.config.AppInstall
 	ctx, cancel := context.WithTimeout(w.ctx, 30*time.Minute)
 	s.cancel, s.busy, s.status = cancel, true, "准备安装…"
+	s.progress = core.AppInstallProgress{}
+	s.started, s.finished, s.refreshed = time.Now(), time.Time{}, time.Time{}
+	s.cancelling = false
 	w.renderAppInstaller()
 	done := make(chan struct{})
 	w.triggerWorkers = append(w.triggerWorkers, done)
@@ -143,9 +273,11 @@ func (w *app) startAppInstall() {
 		defer close(done)
 		defer cancel()
 		lastStatus := ""
-		err := client.InstallApplications(ctx, serial, paths, options, func(status string) {
-			lastStatus = status
-			w.post(func() { w.setAppInstallStatus(s, status) })
+		var lastProgress core.AppInstallProgress
+		err := client.InstallApplications(ctx, serial, paths, options, func(progress core.AppInstallProgress) {
+			lastStatus = progress.Message
+			lastProgress = progress
+			w.post(func() { w.setAppInstallProgress(s, progress) })
 		})
 		if err != nil {
 			status := "安装失败：" + err.Error()
@@ -161,6 +293,8 @@ func (w *app) startAppInstall() {
 		}
 		w.post(func() {
 			s.busy, s.cancel = false, nil
+			s.progress = lastProgress
+			s.finished = time.Now()
 			w.setAppInstallStatus(s, lastStatus)
 			if w.modalWindow == s.owner || !w.modal {
 				w.renderAppInstaller()

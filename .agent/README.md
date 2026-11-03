@@ -16,8 +16,13 @@
 ├── skills/
 │   ├── loghelp-sync-code/
 │   │   └── SKILL.md
-│   └── loghelp-desktop-features/
-│       └── SKILL.md
+│   ├── loghelp-desktop-features/
+│   │   └── SKILL.md
+│   └── ui-ux-pro-max/
+│       ├── SKILL.md
+│       ├── references/
+│       ├── data/
+│       └── scripts/
 └── scripts/
     ├── git-commit.py
     ├── package-release.py
@@ -29,6 +34,8 @@
 `skills/loghelp-desktop-features/SKILL.md` 维护 Go 桌面功能的跨平台、投屏、图片剪贴板与验证约束；其个人技能安装副本用于自动发现，修改时以本目录版本为准并同步。
 
 `skills/loghelp-sync-code/SKILL.md` 维护代码更新规则：默认 rebase，备份并恢复本地改动，纯同步不触发审查或构建；通过根 `AGENTS.md` 按任务发现。
+
+`skills/ui-ux-pro-max/` 安装自 https://github.com/nextlevelbuilder/ui-ux-pro-max-skill ，版本为 `713eef51b04efc98d6fa565323b495f7c9c89fd4`；提供 UI/UX 设计规则及本地检索数据，通过根 `AGENTS.md` 按任务发现。安装保留运行所需文件，不引入上游测试目录；仅清理上游脚本空行的尾随空格。
 
 维护时核对目录索引、入口路由及相关流程，避免路径失效或规则互相矛盾。静态检查文件引用、UTF-8 和 `git diff --check`；不要为文档维护触发应用构建。工具脚本不自动新增或运行测试。
 

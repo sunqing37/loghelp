@@ -11,6 +11,7 @@
 | `.agent/project.md` | 定位模块、版本、构建及验收资料 |
 | `.agent/rules/code-guardrails.md` | 修改或审查业务代码、UI、更新功能 |
 | `.agent/skills/loghelp-desktop-features/SKILL.md` | 新增或修改 Go 桌面功能；跨平台、投屏、图片剪贴板及依赖分发 |
+| `.agent/skills/ui-ux-pro-max/SKILL.md` | UI/UX 设计、界面调整与审查；配色、字体、布局、交互及可访问性 |
 | `.agent/rules/build-and-validation.md` | 编译、运行与手动验收 |
 | `.agent/rules/commit-message.md` | 生成 review、按功能分类拆分提交、准备推送或 PR |
 | `.agent/rules/changelog.md` | 准备提交或发布 |

@@ -38,13 +38,11 @@ func (w *app) updatePanelCursor(p *page) {
 		return
 	}
 	x, y := ebiten.CursorPosition()
-	if p.shell == nil {
-		for _, detail := range []bool{false, true} {
-			g := w.logScrollbar(p, detail)
-			if w.logScrollDrag.page == p || !g.track.Empty() && image.Pt(x, y).In(g.track) {
-				w.cursorShape = ebiten.CursorShapePointer
-				return
-			}
+	for _, detail := range []bool{false, true} {
+		g := w.logScrollbar(p, detail)
+		if w.logScrollDrag.page == p || !g.track.Empty() && image.Pt(x, y).In(g.track) {
+			w.cursorShape = ebiten.CursorShapePointer
+			return
 		}
 	}
 	if p.shell == nil {
@@ -65,7 +63,7 @@ func (w *app) updatePanelCursor(p *page) {
 		return
 	}
 	if p.shell != nil {
-		if p.shell.connection != nil {
+		if p.shell.vt != nil {
 			w.cursorShape = ebiten.CursorShapeText
 		}
 	} else if index := p.scroll + (y-rect.Min.Y)/w.rowHeight(); index >= 0 && index < len(p.result.Rows) {

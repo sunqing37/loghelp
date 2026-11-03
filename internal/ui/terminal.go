@@ -4,27 +4,33 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"image"
 	"io"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/atotto/clipboard"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
-	"github.com/hinshun/vt10x"
 	"loghelp/internal/core"
+	"loghelp/internal/vt10x"
 )
 
 type shellState struct {
-	vt         vt10x.Terminal
-	connection *core.Shell
-	cancel     context.CancelFunc
-	input      chan []byte
-	cols, rows int
-	generation uint64
+	vt                vt10x.Terminal
+	connection        *core.Shell
+	cancel            context.CancelFunc
+	input             chan []byte
+	cols, rows        int
+	generation        uint64
+	selecting         bool
+	selectionScrollAt time.Time
+	selectionPoint    image.Point
 }
 
 func (s *shellState) close() {
+	s.selecting = false
 	s.generation++
 	if s.cancel != nil {
 		s.cancel()
@@ -141,6 +147,11 @@ func (w *app) shellInput(p *page, value string) {
 	}
 	select {
 	case p.shell.input <- []byte(value):
+		p.shell.selecting = false
+		p.shell.vt.Lock()
+		p.shell.vt.ClearSelection()
+		p.shell.vt.Unlock()
+		p.shell.vt.ScrollTo(0)
 	default:
 		p.status = "终端输入队列已满，此次输入未发送"
 	}
@@ -159,8 +170,29 @@ func (w *app) copyTerminal(p *page) {
 	if p.shell == nil || p.shell.vt == nil {
 		return
 	}
-	value := p.shell.vt.String()
-	lines := strings.Split(value, "\n")
+	terminal := p.shell.vt
+	terminal.Lock()
+	if value, selected := terminal.SelectionText(); selected {
+		terminal.Unlock()
+		if err := clipboard.WriteAll(value); err != nil {
+			w.message("剪贴板", err.Error())
+		}
+		return
+	}
+	cols, rows := terminal.Size()
+	lines := make([]string, rows)
+	for row := 0; row < rows; row++ {
+		var line strings.Builder
+		for col := 0; col < cols; col++ {
+			char := terminal.ViewCell(col, row).Char
+			if char == 0 {
+				char = ' '
+			}
+			line.WriteRune(char)
+		}
+		lines[row] = line.String()
+	}
+	terminal.Unlock()
 	for i := range lines {
 		lines[i] = strings.TrimRight(lines[i], " \x00")
 	}
@@ -174,12 +206,30 @@ func keyRepeat(key ebiten.Key) bool {
 }
 func (w *app) terminalKeys(p *page) {
 	ctrl, shift := ebiten.IsKeyPressed(ebiten.KeyControl), ebiten.IsKeyPressed(ebiten.KeyShift)
+	if shift && p.shell.vt != nil {
+		switch {
+		case keyRepeat(ebiten.KeyPageUp):
+			p.shell.vt.Scroll(max(p.shell.rows-1, 1))
+			return
+		case keyRepeat(ebiten.KeyPageDown):
+			p.shell.vt.Scroll(-max(p.shell.rows-1, 1))
+			return
+		case keyRepeat(ebiten.KeyHome):
+			p.shell.vt.ScrollTo(10000)
+			return
+		case keyRepeat(ebiten.KeyEnd):
+			p.shell.vt.ScrollTo(0)
+			return
+		}
+	}
 	copyMod := ctrl && shift
 	if runtime.GOOS == "darwin" {
 		copyMod = ebiten.IsKeyPressed(ebiten.KeyMeta)
 	}
-	if copyMod && inpututil.IsKeyJustPressed(ebiten.KeyC) {
-		w.copyTerminal(p)
+	if copyMod && ebiten.IsKeyPressed(ebiten.KeyC) {
+		if inpututil.IsKeyJustPressed(ebiten.KeyC) {
+			w.copyTerminal(p)
+		}
 		return
 	}
 	if copyMod && inpututil.IsKeyJustPressed(ebiten.KeyV) {
@@ -192,6 +242,12 @@ func (w *app) terminalKeys(p *page) {
 		return
 	}
 	if ctrl {
+		if ebiten.IsKeyPressed(ebiten.KeyC) && w.hasTerminalSelection(p) {
+			if inpututil.IsKeyJustPressed(ebiten.KeyC) {
+				w.copyTerminal(p)
+			}
+			return
+		}
 		for i := 0; i < 26; i++ {
 			if keyRepeat(ebiten.KeyA + ebiten.Key(i)) {
 				w.shellInput(p, string([]byte{byte(i + 1)}))

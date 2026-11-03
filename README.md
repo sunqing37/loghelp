@@ -99,6 +99,10 @@ FFmpeg 可安装到 PATH、放在程序旁 `runtime/ffmpeg`（Windows 为 `runti
 
 顶部「文件」提供文件选择、最近成功打开的 15 个路径和排查方案。可把本地日志文件或录制目录拖入无弹窗的主窗口，一次最多 10 项；直接读取原始文件，复用离线索引，不复制整个大文件。文件缺失时提示打开失败，可清空最近列表。
 
+### 终端滚动
+
+终端支持鼠标滚轮、右侧滚动条拖动和 `Shift+PageUp/PageDown` 翻页；`Shift+Home` 查看最早历史，`Shift+End` 或「回到底部」恢复跟随。查看历史时新输出不会拉走当前位置，输入命令会回到底部。支持鼠标跨行拖动选择文字、拖到上下边缘自动滚动，以及选区高亮。右键或 `Ctrl+C` 复制选区；无选区时 `Ctrl+C` 仍中断命令。`Ctrl+Shift+C`（macOS 为 `⌘C`）或「复制选区/输出」优先复制选区，无选区时复制当前可见内容；`Esc` 清除选区。输入命令、调整终端尺寸或重新连接时清除选区，历史淘汰到选区时也会清除；复制自动换行不额外插入换行。每个会话最多保留 10,000 行、约 100 万字符单元；达到上限时丢弃最早历史，重新连接后清空。历史按原列宽保存，窗口变窄时裁切、变宽时补空白；全屏程序的备用屏幕不写入历史。
+
 ### 安装应用到指定设备
 
 顶部「安装应用」（或「文件 → 安装应用到设备」）打开安装窗口，先选择在线目标设备，再选择安装包并点击「开始安装」。支持系统文件对话框多选，也可将安装文件直接拖到主窗口或安装弹窗；每次最多 128 个文件，再次选择/拖入替换待安装列表。安装始终绑定所选设备，切换日志页不会改变目标。
@@ -142,7 +146,7 @@ scripts/build.py   Python 3.9+ 跨平台编译脚本，仅使用标准库
 openspec/changes/build-desktop-logcat/  需求、设计和任务进度
 ```
 
-固定 Ebitengine v2.10.5、EbitenUI v0.7.3、vt10x 提交 5011da428d02，终端通过 Go ADB Shell-v2 协议连接。ADB 使用外部 SDK 的安装，不修改 PATH，不自动 kill-server。配置位于操作系统用户配置目录下 `loghelp/settings.json`，例如 Windows `%APPDATA%\loghelp\settings.json`。
+固定 Ebitengine v2.10.5、EbitenUI v0.7.3，内嵌基于 vt10x 提交 5011da428d02 的历史回滚扩展（来源及许可证见 `internal/vt10x/`），终端通过 Go ADB Shell-v2 协议连接。ADB 使用外部 SDK 的安装，不修改 PATH，不自动 kill-server。配置位于操作系统用户配置目录下 `loghelp/settings.json`，例如 Windows `%APPDATA%\loghelp\settings.json`。
 
 ## 编译与启动
 

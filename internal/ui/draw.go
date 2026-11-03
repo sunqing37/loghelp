@@ -12,8 +12,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
-	"github.com/hinshun/vt10x"
 	"loghelp/internal/core"
+	"loghelp/internal/vt10x"
 )
 
 func (w *app) paint(screen *ebiten.Image, s string, x, y float64, c color.Color) {
@@ -409,7 +409,11 @@ func (w *app) mouse(p *page) {
 		return
 	}
 	x, y := ebiten.CursorPosition()
-	if p.shell == nil && w.scrollLogs(p, x, y) {
+	if w.scrollLogs(p, x, y) {
+		return
+	}
+	if p.shell != nil {
+		w.terminalMouse(p, x, y)
 		return
 	}
 	if p.shell == nil && w.resizeColumns(x, y) {
@@ -504,11 +508,10 @@ func (w *app) drawTerminal(screen *ebiten.Image, p *page, rect image.Rectangle) 
 	if state.vt == nil {
 		return
 	}
-	cw, _ := text.Measure("M", w.face, 0)
-	cw = max(cw, float64(w.px(7)))
-	ch := w.fontSize() + float64(w.px(4))
-	cols, rows := max(int(float64(rect.Dx())/cw), 2), max(int(float64(rect.Dy())/ch), 2)
+	cw, ch := w.terminalCellSize()
+	cols, rows := max(int(float64(rect.Dx()-w.px(14))/cw), 2), max(int(float64(rect.Dy())/ch), 2)
 	if cols != state.cols || rows != state.rows {
+		state.selecting = false
 		state.cols, state.rows = cols, rows
 		state.vt.Resize(cols, rows)
 		if state.connection != nil {
@@ -517,20 +520,31 @@ func (w *app) drawTerminal(screen *ebiten.Image, p *page, rect image.Rectangle) 
 		}
 	}
 	state.vt.Lock()
-	defer state.vt.Unlock()
+	_, offset := state.vt.Scrollback()
+	selectionBG, selectionFG := w.colors().accent, rgb(255, 255, 255)
+	if !w.lightTheme() {
+		selectionFG = w.colors().bg
+	}
 	for row := 0; row < rows; row++ {
+		left, right := state.vt.SelectionRange(row)
 		for col := 0; col < cols; col++ {
-			cell := state.vt.Cell(col, row)
+			cell := state.vt.ViewCell(col, row)
 			x, y := float64(rect.Min.X)+float64(col)*cw, float64(rect.Min.Y)+float64(row)*ch
 			bg := vtColor(cell.BG, false)
+			fg := vtColor(cell.FG, true)
+			if col >= left && col < right {
+				bg, fg = selectionBG, selectionFG
+			}
 			vector.FillRect(screen, float32(x), float32(y), float32(cw), float32(ch), bg, false)
 			if cell.Char >= 32 {
-				w.paint(screen, string(cell.Char), x, y, vtColor(cell.FG, true))
+				w.paint(screen, string(cell.Char), x, y, fg)
 			}
 		}
 	}
-	if w.terminalFocus && state.vt.CursorVisible() && time.Now().UnixMilli()%1000 < 600 {
+	if offset == 0 && w.terminalFocus && state.vt.CursorVisible() && time.Now().UnixMilli()%1000 < 600 {
 		cursor := state.vt.Cursor()
 		vector.FillRect(screen, float32(float64(rect.Min.X)+float64(cursor.X)*cw), float32(float64(rect.Min.Y)+float64(cursor.Y+1)*ch-float64(w.px(2))), float32(cw), float32(w.px(2)), color.White, false)
 	}
+	state.vt.Unlock()
+	w.drawLogScrollbar(screen, p, false)
 }

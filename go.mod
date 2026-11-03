@@ -10,7 +10,6 @@ require (
 	github.com/ebitenui/ebitenui v0.7.3
 	github.com/gorilla/websocket v1.5.3
 	github.com/hajimehoshi/ebiten/v2 v2.10.5
-	github.com/hinshun/vt10x v0.0.0-20220301184237-5011da428d02
 	github.com/klauspost/compress v1.20.3
 	github.com/ncruces/zenity v0.10.15
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e

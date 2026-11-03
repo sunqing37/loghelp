@@ -88,6 +88,14 @@ func (w *app) keyboard() {
 			return
 		}
 		if p := w.active(); p != nil && p.shell != nil && w.terminalFocus && !w.modal && !w.ui.HasFocus() {
+			if w.hasTerminalSelection(p) {
+				p.shell.vt.Lock()
+				p.shell.vt.ClearSelection()
+				p.shell.vt.Unlock()
+				p.shell.selecting = false
+				w.renderDirty = true
+				return
+			}
 			w.shellInput(p, "\x1b")
 			return
 		}

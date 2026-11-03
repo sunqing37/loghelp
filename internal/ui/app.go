@@ -650,6 +650,11 @@ ready:
 		w.finishTabDrag()
 	}
 	p := w.active()
+	for _, tab := range w.pages {
+		if tab.shell != nil && (tab != p || !allowInput || w.modal || w.tabDrag.page != nil) {
+			tab.shell.selecting = false
+		}
+	}
 	if p != nil {
 		if !allowInput || w.modal {
 			p.detailSelection.dragging = false

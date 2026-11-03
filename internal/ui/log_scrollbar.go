@@ -22,6 +22,16 @@ type logScrollGeometry struct {
 // Drawing and input share the same thumb size, range and usable track.
 func (w *app) logScrollbar(p *page, detail bool) logScrollGeometry {
 	rect, total, visible, offset := w.panelRect(), len(p.result.Rows), w.visibleRows(), p.scroll
+	if p.shell != nil {
+		if detail || p.shell.vt == nil {
+			return logScrollGeometry{}
+		}
+		p.shell.vt.Lock()
+		history, back := p.shell.vt.Scrollback()
+		p.shell.vt.Unlock()
+		visible = p.shell.rows
+		total, offset = history+visible, history-back
+	}
 	if detail {
 		if w.detailPanel == nil || p.selected < 0 || p.selected >= len(p.result.Rows) {
 			return logScrollGeometry{}
@@ -32,7 +42,7 @@ func (w *app) logScrollbar(p *page, detail bool) logScrollGeometry {
 		rect.Min.Y += w.px(12)
 		rect.Max.Y -= w.px(12)
 	}
-	if p.shell != nil || total <= visible || rect.Empty() {
+	if total <= visible || rect.Empty() {
 		return logScrollGeometry{}
 	}
 	track := image.Rect(max(rect.Min.X, rect.Max.X-w.px(14)), rect.Min.Y, rect.Max.X, rect.Max.Y)
@@ -70,6 +80,8 @@ func (w *app) scrollLogs(p *page, x, y int) bool {
 			offset := int(int64(max(0, min(y-g.track.Min.Y-drag.grab, travel))) * int64(g.maximum) / int64(travel))
 			if drag.detail {
 				p.detailScroll = offset
+			} else if p.shell != nil {
+				p.shell.vt.ScrollTo(g.maximum - offset)
 			} else {
 				p.scroll = offset
 			}
@@ -84,6 +96,10 @@ func (w *app) scrollLogs(p *page, x, y int) bool {
 		}
 		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 			w.ui.ClearFocus()
+			if p.shell != nil {
+				w.terminalFocus = true
+				p.shell.selecting = false
+			}
 			p.detailSelection.dragging = false
 			if !detail {
 				p.follow, p.keepSelectionVisible = false, false

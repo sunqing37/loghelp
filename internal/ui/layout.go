@@ -137,12 +137,12 @@ func (w *app) rebuild() {
 		w.commandInput = command
 		command.SubmitEvent.AddHandler(func(any) { w.submitShell(p, command.GetText()); command.SetText("") })
 		main.AddChild(w.inset(w.inputRow("命令", command, w.action("提交", "primary", func() { w.submitShell(p, command.GetText()); command.SetText("") }), w.action("历史", "quiet", func() { w.choices("命令历史", w.config.ShellHistory, func(s string) { command.SetText(s) }) })), 12, c.surface))
-		main.AddChild(w.stretchRow(w.label("设备终端"), w.row(w.action("重新连接", "quiet", func() { w.connectShell(p) }), w.action("复制输出", "quiet", func() { w.copyTerminal(p) }))))
-		main.AddChild(w.muted("点击终端输入  ·  Ctrl+C 中断  ·  Ctrl+Shift+C/V 复制粘贴"))
+		main.AddChild(w.stretchRow(w.label("设备终端"), w.row(w.action("回到底部", "quiet", func() { p.shell.vt.ScrollTo(0) }), w.action("重新连接", "quiet", func() { w.connectShell(p) }), w.action("复制选区/输出", "quiet", func() { w.copyTerminal(p) }))))
+		main.AddChild(w.muted("拖动选字  ·  右键复制选区  ·  Ctrl+C 有选区复制，无选区中断  ·  Esc 清除选区"))
 		w.logPanel = widget.NewContainer(widget.ContainerOpts.WidgetOpts(widget.WidgetOpts.MinSize(w.px(200), w.px(200))))
 		w.detailPanel = nil
 		w.rowHeader = nil
-		main.AddChild(w.logPanel, w.muted("交互式 Shell  ·  断线后手动重连"), w.row(), w.row())
+		main.AddChild(w.logPanel, w.muted("滚轮 / Shift+PageUp/Down 回滚  ·  Shift+End 回到底部  ·  Ctrl+Shift+C/V 复制粘贴（macOS：⌘C/V）"), w.row(), w.row())
 	} else {
 		changed := func(string) { p.dirty = true; p.editAt = time.Now() }
 		w.filterInput = w.input(p.state.Filter, "筛选日志，例如  package:com.example  level:WARN", changed, func() { w.apply(p) })

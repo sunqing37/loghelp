@@ -28,6 +28,7 @@ func (w *app) highlight(screen *ebiten.Image, s string, x, y float64, search cor
 
 func (w *app) highlightSpans(screen *ebiten.Image, s string, x, y float64, spans [][]int, start int, base color.Color) {
 	cursor := 0
+	palette := w.colors()
 	draw := func(part string, highlight bool) {
 		if part == "" {
 			return
@@ -35,8 +36,8 @@ func (w *app) highlightSpans(screen *ebiten.Image, s string, x, y float64, spans
 		width, _ := text.Measure(part, w.face, 0)
 		c := base
 		if highlight {
-			vector.FillRect(screen, float32(x), float32(y), float32(width), float32(w.fontSize()+float64(w.px(3))), rgb(234, 184, 91), false)
-			c = rgb(35, 42, 55)
+			vector.FillRect(screen, float32(x), float32(y), float32(width), float32(w.fontSize()+float64(w.px(3))), palette.highlight, false)
+			c = palette.onHighlight
 		}
 		w.paint(screen, part, x, y, c)
 		x += width
@@ -58,18 +59,22 @@ func (w *app) highlightSpans(screen *ebiten.Image, s string, x, y float64, spans
 	}
 	draw(s[cursor:], false)
 }
-func entryColor(e *core.Entry) color.NRGBA {
+func (w *app) entryColor(e *core.Entry) color.NRGBA {
+	c := w.colors()
 	switch core.LevelValue(e.Level) {
 	case 1, 2:
-		return color.NRGBA{94, 153, 218, 255}
+		return c.accent
 	case 3:
-		return color.NRGBA{61, 168, 119, 255}
+		return c.success
 	case 4:
-		return color.NRGBA{211, 145, 33, 255}
+		if w.lightTheme() {
+			return rgb(137, 86, 7)
+		}
+		return rgb(244, 201, 112)
 	case 5, 6:
-		return color.NRGBA{224, 71, 83, 255}
+		return c.danger
 	}
-	return color.NRGBA{145, 156, 172, 255}
+	return c.muted
 }
 func (w *app) metadata(e *core.Entry) string {
 	fields := []string{e.Level}
@@ -109,16 +114,42 @@ func (w *app) logColumns(width int) []logColumn {
 	cols := []logColumn{{"level", "级别", levelWidth}}
 	used := levelWidth
 	names := map[string]string{"time": "时间", "pid": "PID", "tid": "TID", "tag": "TAG", "package": "应用", "process": "进程"}
-	widths := map[string]int{"time": 190, "pid": 84, "tid": 84, "tag": 174, "package": 224, "process": 220}
+	widths := map[string]int{"time": 176, "pid": 64, "tid": 64, "tag": 144, "package": 176, "process": 176}
+	messageMinimum := w.px(320)
+	if width < w.px(900) {
+		messageMinimum = w.px(240)
+	}
+	fixed, flexible := 0, 0
 	for _, key := range w.config.Columns {
 		if n := widths[key]; n > 0 {
-			n = w.px(int(float64(n) * scale))
-			n = w.columnWidth(key, n)
+			if w.config.ColumnWidths[key] > 0 {
+				fixed += w.columnWidth(key, 0)
+			} else {
+				flexible += w.px(int(float64(n) * scale))
+			}
+		}
+	}
+	// Saved column widths stay authoritative. Only unsized metadata contracts
+	// to keep message text visible as the window becomes narrower.
+	ratio := 1.0
+	if flexible > 0 {
+		ratio = min(1, float64(max(width-levelWidth-fixed-messageMinimum-w.px(12), 0))/float64(flexible))
+	}
+	for _, key := range w.config.Columns {
+		if n := widths[key]; n > 0 {
+			minimum := 60
+			if key == "time" {
+				minimum = 112
+			} else if key == "tag" || key == "package" || key == "process" {
+				minimum = 80
+			}
+			fallback := max(w.px(int(float64(minimum)*scale)), int(float64(w.px(int(float64(n)*scale)))*ratio))
+			n = w.columnWidth(key, fallback)
 			cols = append(cols, logColumn{key, names[key], n})
 			used += n
 		}
 	}
-	cols = append(cols, logColumn{"message", "消息", w.columnWidth("message", max(width-used-w.px(12), w.px(320)))})
+	cols = append(cols, logColumn{"message", "消息", w.columnWidth("message", max(width-used-w.px(12), messageMinimum))})
 	return cols
 }
 func (w *app) tableWidth(width int) int {
@@ -169,14 +200,24 @@ func (w *app) paintFace(screen *ebiten.Image, s string, x, y float64, face text.
 	text.Draw(screen, s, face, opts)
 }
 func (w *app) fit(s string, width float64) string {
-	if measured, _ := text.Measure(s, w.face, 0); measured <= width {
+	return fitFace(s, width, w.face)
+}
+
+func fitFace(s string, width float64, face text.Face) string {
+	if width <= 0 {
+		return ""
+	}
+	if measured, _ := text.Measure(s, face, 0); measured <= width {
 		return s
+	}
+	if ellipsis, _ := text.Measure("…", face, 0); ellipsis > width {
+		return ""
 	}
 	r := []rune(s)
 	left, right := 0, len(r)
 	for left < right {
 		mid := (left + right + 1) / 2
-		measure, _ := text.Measure(string(r[:mid])+"…", w.face, 0)
+		measure, _ := text.Measure(string(r[:mid])+"…", face, 0)
 		if measure <= width {
 			left = mid
 		} else {
@@ -201,7 +242,7 @@ func (w *app) drawPanels(screen *ebiten.Image) {
 		return
 	}
 	area := screen.SubImage(rect).(*ebiten.Image)
-	area.Fill(c.bg)
+	area.Fill(c.surface)
 	if p.shell != nil {
 		w.drawTerminal(area, p, rect)
 		return
@@ -215,7 +256,7 @@ func (w *app) drawPanels(screen *ebiten.Image) {
 		header := w.rowHeader.GetWidget().Rect.Intersect(screen.Bounds())
 		if !header.Empty() {
 			canvas := screen.SubImage(header).(*ebiten.Image)
-			canvas.Fill(c.surface)
+			canvas.Fill(c.elevated)
 			_, headerTextHeight := text.Measure(" ", w.smallFace, 0)
 			headerTextY := float64(header.Min.Y) + (float64(header.Dy())-headerTextHeight)/2
 			x := rect.Min.X - w.tableX
@@ -253,7 +294,9 @@ func (w *app) drawPanels(screen *ebiten.Image) {
 			vector.FillRect(area, float32(rect.Min.X), float32(top), float32(rect.Dx()), float32(w.rowHeight()), c.selection, false)
 			vector.FillRect(area, float32(rect.Min.X), float32(top), float32(w.px(3)), float32(w.rowHeight()), c.accent, false)
 		} else if !w.modal && mx >= rect.Min.X && mx < rect.Max.X && my >= top && my < top+w.rowHeight() {
-			vector.FillRect(area, float32(rect.Min.X), float32(top), float32(rect.Dx()), float32(w.rowHeight()), c.surface, false)
+			vector.FillRect(area, float32(rect.Min.X), float32(top), float32(rect.Dx()), float32(w.rowHeight()), c.accentSoft, false)
+		} else if index%2 != 0 {
+			vector.FillRect(area, float32(rect.Min.X), float32(top), float32(rect.Dx()), float32(w.rowHeight()), c.stripe, false)
 		}
 		x := rect.Min.X - w.tableX
 		for _, col := range cols {
@@ -277,21 +320,13 @@ func (w *app) drawPanels(screen *ebiten.Image) {
 					}
 					w.highlight(canvas, value, messageX, y, p.search, fg)
 				} else if col.key == "level" {
-					fg = entryColor(e)
-					if w.lightTheme() {
-						switch core.LevelValue(e.Level) {
-						case 1, 2:
-							fg = rgb(40, 103, 192)
-						case 3:
-							fg = rgb(20, 132, 97)
-						case 4:
-							fg = rgb(162, 106, 15)
-						case 5, 6:
-							fg = rgb(193, 53, 78)
-						}
-					}
-					vector.FillRect(canvas, float32(x+w.px(9)), float32(top+w.px(7)), float32(w.px(23)), float32(w.fontSize()+float64(w.px(4))), color.NRGBA{fg.R, fg.G, fg.B, 24}, false)
-					w.paint(canvas, value, float64(x+w.px(15)), y, fg)
+					fg = w.entryColor(e)
+					_, badgeHeight := text.Measure(value, w.face, 0)
+					badgeWidth := w.px(24)
+					badgeY := float32(y) - float32(w.px(2))
+					vector.FillRect(canvas, float32(x+(col.width-badgeWidth)/2), badgeY, float32(badgeWidth), float32(badgeHeight)+float32(w.px(4)), color.NRGBA{fg.R, fg.G, fg.B, 22}, false)
+					valueWidth, _ := text.Measure(value, w.face, 0)
+					w.paint(canvas, value, float64(x)+float64(col.width)/2-valueWidth/2, y, fg)
 				} else {
 					if col.key == "tag" {
 						fg = c.text
@@ -303,15 +338,7 @@ func (w *app) drawPanels(screen *ebiten.Image) {
 		}
 	}
 	if len(p.result.Rows) == 0 {
-		title, hint := "开始一次日志分析", "在左侧选择设备并开始采集，或打开已有日志文件"
-		if p.collector != nil || p.offline != nil {
-			title, hint = "没有符合条件的日志", "尝试调整过滤条件，或等待设备产生新日志"
-		}
-		tw, _ := text.Measure(title, w.titleFace, 0)
-		hw, _ := text.Measure(hint, w.uiFace, 0)
-		cy := float64(rect.Min.Y+rect.Dy()/2) - float64(w.px(35))
-		w.paintFace(area, title, float64(rect.Min.X)+float64(rect.Dx())/2-tw/2, cy, w.titleFace, c.text)
-		w.paintFace(area, hint, float64(rect.Min.X)+float64(rect.Dx())/2-hw/2, cy+float64(w.px(38)), w.uiFace, c.muted)
+		w.drawLogEmptyState(area, p, rect)
 	}
 	w.drawLogScrollbar(area, p, false)
 	if w.detailPanel == nil {
@@ -345,6 +372,36 @@ func (w *app) drawPanels(screen *ebiten.Image) {
 		w.drawDetailSelection(detail, p, i, float64(detailRect.Min.X+w.px(16)-p.detailX), float64(detailRect.Min.Y+w.px(12)+(i-p.detailScroll)*lineHeight))
 	}
 	w.drawLogScrollbar(detail, p, true)
+}
+
+// Keep the guidance useful at short pane heights and clip text to the pane.
+func (w *app) drawLogEmptyState(area *ebiten.Image, p *page, rect image.Rectangle) {
+	c := w.colors()
+	title, hint := "准备好开始分析", "选择左侧设备并开始采集，或从顶部「文件」打开日志"
+	if p.collector != nil {
+		title, hint = "等待匹配的日志", "设备正在采集；可调整过滤条件以查看更多日志"
+	} else if p.offline != nil {
+		title, hint = "没有符合条件的日志", "尝试清除过滤条件，或检查当前文件与分析范围"
+	}
+	centerX := float64(rect.Min.X + rect.Dx()/2)
+	centerY := float64(rect.Min.Y + rect.Dy()/2)
+	titleY := centerY - float64(w.px(22))
+	if rect.Dy() >= w.px(190) {
+		x, y := float32(centerX)-float32(w.px(24)), float32(centerY)-float32(w.px(86))
+		vector.StrokeRect(area, x, y, float32(w.px(48)), float32(w.px(40)), float32(w.px(2)), c.controlBorder, false)
+		for i, width := range []int{24, 18, 24} {
+			vector.FillRect(area, x+float32(w.px(10)), y+float32(w.px(10+i*9)), float32(w.px(width)), float32(w.px(2)), c.accent, false)
+		}
+	}
+	for i, line := range []string{title, hint} {
+		face, fg := w.titleFace, c.text
+		if i > 0 {
+			face, fg = w.uiFace, c.muted
+		}
+		line = fitFace(line, float64(max(rect.Dx()-w.px(32), 1)), face)
+		width, _ := text.Measure(line, face, 0)
+		w.paintFace(area, line, centerX-width/2, titleY+float64(w.px(i*34)), face, fg)
+	}
 }
 
 func (w *app) drawDetailDivider(screen *ebiten.Image) {

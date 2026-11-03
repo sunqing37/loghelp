@@ -2,6 +2,8 @@ package ui
 
 import (
 	"math"
+	"os"
+	"strconv"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
@@ -20,6 +22,11 @@ func (w *app) fontSize() float64     { return float64(w.config.FontSize) * w.dis
 func (w *app) detailLineHeight() int { return w.px(int(w.config.FontSize) + 8) }
 
 func monitorScale() float64 {
+	if os.Getenv("LOGHELP_PROFILE_DIR") != "" && os.Getenv("LOGHELP_PROFILE_BACKGROUND") == "1" {
+		if scale, err := strconv.ParseFloat(os.Getenv("LOGHELP_PROFILE_SCALE"), 64); err == nil && scale >= 1 && scale <= 3 {
+			return scale
+		}
+	}
 	scale := ebiten.Monitor().DeviceScaleFactor()
 	if scale <= 0 || math.IsNaN(scale) || math.IsInf(scale, 0) {
 		return 1

@@ -58,3 +58,10 @@ Windows 11 家庭版 10.0.26200，Intel Core Ultra 7 255H，32 GiB 内存，Inte
 没有新增自动化测试。所有编译在代码变更后进行，并等待其他构建完成；源码未改时未重复构建。实际自然日志采样不是 5,000 行/秒的回放压力验收，OpenSpec 的该项仍保留未完成。
 
 最终 Windows EXE：`bin/loghelp.exe`，2026-10-13 10:32:53 构建，20,238,336 字节，SHA-256 `F6E9DD8B8E6F1792B1A44F2A7F8B3CAF3C964AD1DE7DF58EBEBDA0B063CEF5A6`。采样复用了这个构建，结束后没有再次编译。
+
+
+## 后台视觉预览（2026-11-03）
+
+当 `LOGHELP_PROFILE_DIR` 非空且 `LOGHELP_PROFILE_BACKGROUND=1` 时，应用在运行前调用 `SetWindowVisible(false)`，不显示窗口；继续使用自己的渲染缓冲保存 `workspace.png`，同时保存包含控件矩形、可见行数、缩放和窗口可见状态的 `layout.json`。原有后台键鼠隔离仍有效。普通启动不受影响。
+
+仅此诊断模式支持 `LOGHELP_PROFILE_SIZE=1000x720`（逻辑尺寸，范围 1000×720 至 2560×1600）和 `LOGHELP_PROFILE_SCALE=1.5`（1 至 3 的绘图缩放）。尺寸未设置或格式无效时使用默认尺寸，超出范围的数值收敛到边界；缩放未设置或无效时使用实际显示器缩放。缩放覆盖用于后台排版检查，不替代真实显示器 DPI 切换验收。预览必须使用独立 APPDATA/LOCALAPPDATA 配置；离线视觉检查清空设备序列号，避免自动开始采集。

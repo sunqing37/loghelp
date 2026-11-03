@@ -23,8 +23,10 @@ import (
 const controlHeight = 36
 
 func (w *app) label(s string) *widget.Text { return w.textLabel(s, &w.uiFace, w.foreground()) }
-func (w *app) statusText(s string) *widget.Text {
-	return widget.NewText(widget.TextOpts.WidgetOpts(widget.WidgetOpts.MinSize(0, w.px(26))), widget.TextOpts.Text(s, &w.smallFace, w.colors().muted), widget.TextOpts.Position(widget.TextPositionStart, widget.TextPositionCenter), widget.TextOpts.MaxWidth(float64(w.width-w.px(40))))
+func (w *app) statusText(s string) *compactText {
+	label := w.oneLine(s, true, 1200)
+	label.GetWidget().MinHeight = w.px(26)
+	return label
 }
 func (w *app) button(s string, fn func()) *widget.Button { return w.action(s, "", fn) }
 func (w *app) buttonColor() color.NRGBA                  { return w.colors().elevated }
@@ -33,7 +35,7 @@ func (w *app) input(value, placeholder string, change func(string), submit func(
 	c := w.colors()
 	_, fontHeight := text.Measure(" ", w.uiFace, 0)
 	verticalPadding := max(w.px(6), (w.px(controlHeight)-int(math.Ceil(fontHeight)))/2)
-	images := &widget.TextInputImage{Idle: w.skin(c.bg, c.line, 6), Disabled: w.skin(c.surface, c.line, 6)}
+	images := &widget.TextInputImage{Idle: w.skin(c.input, c.controlBorder, 6), Disabled: w.skin(c.surface, c.line, 6)}
 	entry := widget.NewTextInput(widget.TextInputOpts.WidgetOpts(widget.WidgetOpts.MinSize(w.px(100), w.px(controlHeight)), w.hoverCursor(ebiten.CursorShapeText)), widget.TextInputOpts.Image(images), widget.TextInputOpts.Face(&w.uiFace), widget.TextInputOpts.Color(&widget.TextInputColor{Idle: c.text, Caret: c.accent, Disabled: c.muted, DisabledCaret: c.muted}), widget.TextInputOpts.Padding(&widget.Insets{Left: w.px(12), Right: w.px(12), Top: verticalPadding, Bottom: verticalPadding}), widget.TextInputOpts.Placeholder(placeholder), widget.TextInputOpts.ChangedHandler(func(a *widget.TextInputChangedEventArgs) {
 		if change != nil {
 			change(a.InputText)
@@ -45,11 +47,11 @@ func (w *app) input(value, placeholder string, change func(string), submit func(
 	}))
 	entry.GetWidget().FocusEvent.AddHandler(func(a any) {
 		if event, ok := a.(*widget.WidgetFocusEventArgs); ok {
-			border := c.line
+			border := c.controlBorder
 			if event.Focused {
 				border = c.accent
 			}
-			images.Idle = w.skin(c.bg, border, 6)
+			images.Idle = w.skin(c.input, border, 6)
 		}
 	})
 	entry.SetText(value)
@@ -61,7 +63,7 @@ func (w *app) input(value, placeholder string, change func(string), submit func(
 	return input
 }
 func (w *app) row(children ...widget.PreferredSizeLocateableWidget) *widget.Container {
-	box := widget.NewContainer(widget.ContainerOpts.Layout(widget.NewRowLayout(widget.RowLayoutOpts.Direction(widget.DirectionHorizontal), widget.RowLayoutOpts.Spacing(w.px(5)))))
+	box := widget.NewContainer(widget.ContainerOpts.Layout(widget.NewRowLayout(widget.RowLayoutOpts.Direction(widget.DirectionHorizontal), widget.RowLayoutOpts.Spacing(w.px(8)))))
 	for _, child := range children {
 		data, _ := child.GetWidget().LayoutData.(widget.RowLayoutData)
 		data.Position = widget.RowLayoutPositionCenter
@@ -71,7 +73,7 @@ func (w *app) row(children ...widget.PreferredSizeLocateableWidget) *widget.Cont
 	return box
 }
 func (w *app) column(children ...widget.PreferredSizeLocateableWidget) *widget.Container {
-	box := widget.NewContainer(widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(1), widget.GridLayoutOpts.Stretch([]bool{true}, nil), widget.GridLayoutOpts.Spacing(0, w.px(6)))))
+	box := widget.NewContainer(widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(1), widget.GridLayoutOpts.Stretch([]bool{true}, nil), widget.GridLayoutOpts.Spacing(0, w.px(8)))))
 	box.AddChild(children...)
 	return box
 }
@@ -112,12 +114,12 @@ func (w *app) rebuild() {
 	w.connectionLabel = nil
 	c := w.colors()
 	root := widget.NewContainer(widget.ContainerOpts.BackgroundImage(uiimage.NewNineSliceColor(c.bg)), widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(1), widget.GridLayoutOpts.Stretch([]bool{true}, []bool{false, true, false}))))
-	brand := w.row(w.action("L", "active", func() { w.help() }), w.heading("LogHelp"), w.muted(appVersionLabel), w.muted("ANDROID LOG WORKSPACE"))
+	brand := w.row(w.action("L", "active", func() { w.help() }), w.heading("LogHelp"), w.muted(appVersionLabel), w.muted("Android 日志工作台"))
 	previewKind := "quiet"
 	if w.preview != nil {
 		previewKind = "active"
 	}
-	chrome := w.stretchRow(brand, w.row(w.action("文件", "quiet", w.fileMenu), w.action("安装应用", "quiet", w.openAppInstaller), w.action("设备预览", previewKind, w.openDevicePreview), w.action("终端", "quiet", w.openTerminal), w.action("录制管理", "quiet", w.recordings), w.action("设置", "quiet", w.settings)))
+	chrome := w.toolbar(brand, w.row(w.action("文件", "quiet", w.fileMenu), w.action("安装应用", "quiet", w.openAppInstaller), w.action("设备预览", previewKind, w.openDevicePreview), w.action("终端", "quiet", w.openTerminal), w.action("录制管理", "quiet", w.recordings), w.action("设置", "quiet", w.settings)), func() int { return w.width - w.px(24) })
 	root.AddChild(w.inset(chrome, 12, c.surface))
 	w.ui = &ebitenui.UI{Container: root, PostRenderHook: w.drawPanels}
 	if p == nil {
@@ -129,14 +131,18 @@ func (w *app) rebuild() {
 	}
 	workspace := widget.NewContainer(widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(columns), widget.GridLayoutOpts.Stretch(stretch, []bool{true}))))
 	workspace.AddChild(w.sidebar(p))
-	main := widget.NewContainer(widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(1), widget.GridLayoutOpts.Stretch([]bool{true}, []bool{false, false, false, false, true, false}), widget.GridLayoutOpts.Spacing(0, w.px(8)))))
+	mainRows := []bool{false, false, false, true, false}
+	if p.shell != nil {
+		mainRows = []bool{false, false, false, false, true, false}
+	}
+	main := widget.NewContainer(widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(1), widget.GridLayoutOpts.Stretch([]bool{true}, mainRows), widget.GridLayoutOpts.Spacing(0, w.px(8)))))
 	main.AddChild(w.tabStrip())
 	if p.shell != nil {
 		w.serialInput = nil
 		command := w.input("", "输入命令，按 Enter 提交", nil, nil)
 		w.commandInput = command
 		command.SubmitEvent.AddHandler(func(any) { w.submitShell(p, command.GetText()); command.SetText("") })
-		main.AddChild(w.inset(w.inputRow("命令", command, w.action("提交", "primary", func() { w.submitShell(p, command.GetText()); command.SetText("") }), w.action("历史", "quiet", func() { w.choices("命令历史", w.config.ShellHistory, func(s string) { command.SetText(s) }) })), 12, c.surface))
+		main.AddChild(w.card(w.inputRow("命令", command, w.action("提交", "primary", func() { w.submitShell(p, command.GetText()); command.SetText("") }), w.action("历史", "quiet", func() { w.choices("命令历史", w.config.ShellHistory, func(s string) { command.SetText(s) }) })), 12))
 		main.AddChild(w.stretchRow(w.label("设备终端"), w.row(w.action("回到底部", "quiet", func() { p.shell.vt.ScrollTo(0) }), w.action("重新连接", "quiet", func() { w.connectShell(p) }), w.action("复制选区/输出", "quiet", func() { w.copyTerminal(p) }))))
 		main.AddChild(w.muted("拖动选字  ·  右键复制选区  ·  Ctrl+C 有选区复制，无选区中断  ·  Esc 清除选区"))
 		w.logPanel = widget.NewContainer(widget.ContainerOpts.WidgetOpts(widget.WidgetOpts.MinSize(w.px(200), w.px(200))))
@@ -154,9 +160,10 @@ func (w *app) rebuild() {
 		if p.regex {
 			regexKind = "active"
 		}
-		query := w.column(w.inputRow("过滤", w.filterInput, w.action("应用", "primary", func() { w.apply(p) }), w.action("条件", "quiet", w.fieldHints), w.action("收藏", "quiet", w.filterHistory)), w.inputRow("查找", w.searchInput, w.action("Aa", caseKind, func() { p.caseSensitive = !p.caseSensitive; w.apply(p); w.rebuild() }), w.action(".*", regexKind, func() { p.regex = !p.regex; w.apply(p); w.rebuild() }), w.action("↑", "quiet", func() { w.nextMatch(true) }), w.action("↓", "quiet", func() { w.nextMatch(false) })))
-		main.AddChild(w.inset(query, 12, c.surface))
-		w.resultLabel = w.muted("准备读取日志")
+		query := w.column(w.inputRow("过滤", w.filterInput, w.action("应用", "active", func() { w.apply(p) }), w.action("条件", "quiet", w.fieldHints), w.action("收藏", "quiet", w.filterHistory)), w.inputRow("查找", w.searchInput, w.hintAction("Aa", "区分大小写", caseKind, func() { p.caseSensitive = !p.caseSensitive; w.apply(p); w.rebuild() }), w.hintAction(".*", "使用正则表达式查找", regexKind, func() { p.regex = !p.regex; w.apply(p); w.rebuild() }), w.hintAction("↑", "上一个匹配 · Shift+F3", "quiet", func() { w.nextMatch(true) }), w.hintAction("↓", "下一个匹配 · F3", "quiet", func() { w.nextMatch(false) })))
+		main.AddChild(w.card(query, 12))
+		w.resultLabel = w.oneLine("准备读取日志", true, 190)
+		w.resultLabel.MaxWidth = float64(w.px(190))
 		pause := "暂停"
 		if p.paused {
 			pause = "继续"
@@ -183,9 +190,8 @@ func (w *app) rebuild() {
 		if p.state.MergeLines {
 			mergeKind = "active"
 		}
-		main.AddChild(w.stretchRow(w.row(w.label("日志"), w.resultLabel), w.row(w.action("合并多行", mergeKind, w.toggleMergeLines), clearButton, w.pauseButton, w.followButton, w.recordButton, w.action("导出", "quiet", w.export), w.action("更多", "quiet", w.logMenu))))
-		w.rowHeader = widget.NewContainer(widget.ContainerOpts.WidgetOpts(widget.WidgetOpts.MinSize(w.px(200), w.px(30))), widget.ContainerOpts.BackgroundImage(uiimage.NewNineSliceColor(c.surface)))
-		main.AddChild(w.rowHeader)
+		main.AddChild(w.toolbar(w.row(w.sectionTitle("日志"), w.resultLabel), w.row(w.action("合并多行", mergeKind, w.toggleMergeLines), clearButton, w.pauseButton, w.followButton, w.recordButton, w.action("导出", "quiet", w.export), w.action("更多", "quiet", w.logMenu)), w.workspaceWidth))
+		w.rowHeader = widget.NewContainer(widget.ContainerOpts.WidgetOpts(widget.WidgetOpts.MinSize(w.px(200), w.px(32))), widget.ContainerOpts.BackgroundImage(uiimage.NewNineSliceColor(c.elevated)))
 		w.logPanel = widget.NewContainer(widget.ContainerOpts.WidgetOpts(widget.WidgetOpts.MinSize(w.px(200), w.px(90))))
 		wrapKind := "quiet"
 		if w.config.Wrap {
@@ -193,28 +199,28 @@ func (w *app) rebuild() {
 		}
 		w.copyDetailButton = w.action("复制选中", "quiet", w.copyDetailSelection)
 		w.copyJSONButton = w.action("复制 JSON", "quiet", w.copySelectedJSON)
-		header := w.stretchRow(w.row(w.muted("日志详情"), w.muted("拖选文字 · Ctrl/Cmd+C 复制")), w.row(w.action("换行", wrapKind, func() {
+		header := w.toolbar(w.row(w.sectionTitle("日志详情"), w.action("工具", "quiet", w.detailTools)), w.row(w.action("换行", wrapKind, func() {
 			w.syncInputs()
 			w.config.Wrap = !w.config.Wrap
 			p.detailScroll, p.detailX = 0, 0
 			w.rebuild()
 			w.save()
-		}), w.copyDetailButton, w.copyJSONButton, w.action("复制全部", "quiet", w.copySelected), w.action("上下文", "quiet", w.context)))
+		}), w.copyDetailButton, w.copyJSONButton, w.action("复制全部", "quiet", w.copySelected), w.action("上下文", "quiet", w.context)), w.workspaceWidth)
 		w.detailPanel = widget.NewContainer(widget.ContainerOpts.WidgetOpts(widget.WidgetOpts.MinSize(w.px(200), w.px(minDetailBody))))
 		group := widget.NewContainer(widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(1), widget.GridLayoutOpts.Stretch([]bool{true}, []bool{false, true}), widget.GridLayoutOpts.Spacing(0, w.px(8)))))
-		w.logToolsLabel = w.muted(p.timeDifferenceText())
-		w.logToolsLabel.MaxWidth = float64(w.px(400))
-		tools := w.stretchRow(w.row(w.action("快速过滤", "quiet", w.quickFilter), w.action("书签", "quiet", w.bookmarks), w.action("时间差", "quiet", w.timeDifference)), w.logToolsLabel)
-		detailHeader := w.column(header, tools)
+		w.logToolsLabel = w.oneLine(p.timeDifferenceText(), true, 220)
+		w.logSourceLabel = w.oneLine("点击日志查看原文 · 拖选文字可复制", true, 400)
+		var metadata widget.PreferredSizeLocateableWidget = w.stretchRow(w.logSourceLabel, w.logToolsLabel)
 		if p.state.File != "" {
-			w.logSourceLabel = w.muted(sourceLineText(p))
-			w.logSourceLabel.MaxWidth = float64(w.px(400))
-			detailHeader.AddChild(w.stretchRow(w.logSourceLabel, w.action("来源", "quiet", w.logSource)))
+			metadata = w.stretchRow(w.logSourceLabel, w.row(w.logToolsLabel, w.action("来源", "quiet", w.logSource)))
 		}
+		detailHeader := w.column(header, metadata)
 		group.AddChild(detailHeader, w.detailPanel)
 		w.detailSplitter = widget.NewContainer(widget.ContainerOpts.WidgetOpts(widget.WidgetOpts.MinSize(0, w.px(detailDividerHeight)), w.hoverCursor(ebiten.CursorShapeNSResize)))
 		w.detailArea = widget.NewContainer(widget.ContainerOpts.Layout(&detailSplitLayout{app: w}))
-		w.detailArea.AddChild(w.logPanel, w.detailSplitter, group)
+		table := widget.NewContainer(widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(1), widget.GridLayoutOpts.Stretch([]bool{true}, []bool{false, true}))))
+		table.AddChild(w.rowHeader, w.logPanel)
+		w.detailArea.AddChild(table, w.detailSplitter, group)
 		main.AddChild(w.detailArea)
 		if p.offline != nil {
 			main.AddChild(w.stretchRow(w.muted("离线文件 · 查询完整来源"), w.row(w.action("上一页", "quiet", func() {
@@ -243,7 +249,9 @@ func (w *app) rebuild() {
 	if p.shell == nil {
 		w.statusLabel.MaxWidth = float64(max(w.width-w.px(180), w.px(200)))
 		w.cancelJobButton = w.action("取消任务", "quiet", func() { w.cancelPageJob(p) })
-		root.AddChild(w.inset(w.stretchRow(w.statusLabel, w.cancelJobButton), 6, c.sidebar))
+		footer := w.inset(w.stretchRow(w.statusLabel, w.cancelJobButton), 6, c.sidebar)
+		footer.GetWidget().MinHeight = w.px(48)
+		root.AddChild(footer)
 	} else {
 		root.AddChild(w.inset(w.statusLabel, 6, c.sidebar))
 	}
@@ -251,12 +259,12 @@ func (w *app) rebuild() {
 }
 func (w *app) sidebar(p *page) *widget.Container {
 	c := w.colors()
-	content := widget.NewContainer(widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(1), widget.GridLayoutOpts.Stretch([]bool{true}, []bool{false, false, false, false, false, false, false, false, false, false, true, false}), widget.GridLayoutOpts.Spacing(0, w.px(12)))))
-	content.AddChild(w.muted("工作区 / 来源"))
-	w.sourceLabel = w.label("Android 设备")
-	w.sourceLabel.MaxWidth = float64(w.px(192))
+	content := widget.NewContainer(widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(1), widget.GridLayoutOpts.Stretch([]bool{true}, []bool{false, false, false, false, false, false, false, false, false, false, true, false}), widget.GridLayoutOpts.Spacing(0, w.px(8)))))
+	content.AddChild(w.label("设备与来源"))
+	w.sourceLabel = w.oneLine("Android 设备", false, 168)
+	w.sourceLabel.MaxWidth = float64(w.px(168))
 	w.connectionLabel = w.muted("● 未连接")
-	content.AddChild(w.column(w.sourceLabel, w.connectionLabel))
+	content.AddChild(w.card(w.column(w.sourceLabel, w.connectionLabel), 12))
 	if p.shell != nil {
 		content.AddChild(w.muted(p.state.Serial), w.action("切换到日志", "quiet", func() {
 			for i, tab := range w.pages {
@@ -279,14 +287,14 @@ func (w *app) sidebar(p *page) *widget.Container {
 		}, func() { w.apply(p) })
 		w.buffersInput = w.input(p.state.Buffers, "main,system,crash", nil, nil)
 		if p.state.File != "" {
-			name := w.label(filepath.Base(p.state.File))
+			name := w.oneLine(filepath.Base(p.state.File), false, 192)
 			name.MaxWidth = float64(w.px(192))
-			pathLabel := w.muted(p.state.File)
+			pathLabel := w.oneLine(p.state.File, true, 192)
 			pathLabel.MaxWidth = float64(w.px(192))
 			content.AddChild(name, pathLabel, w.action("重新选择文件", "quiet", func() { w.browse("file", func(path string) { w.openOffline(p, path) }) }), w.muted("应用 / 进程"), w.appInput, w.action("清除应用限制", "quiet", func() { w.appInput.SetText(""); w.apply(p) }), w.muted("分析范围"), w.muted("完整文件 · 分页浏览"), w.row(), w.action("快捷键与帮助", "quiet", w.help))
 		} else {
 			content.AddChild(w.serialInput, w.row(w.action("选择设备", "quiet", w.chooseDevice), w.action("Wi-Fi", "quiet", w.wirelessDevices)))
-			w.startButton = w.action("开始采集", "primary", func() {
+			w.startButton = w.action("开始采集", "capture", func() {
 				if p.collector != nil {
 					w.stop(p)
 				} else {
@@ -315,9 +323,9 @@ func (w *app) tabStrip() *widget.Container {
 	tabs := w.row()
 	for i, p := range w.pages {
 		i := i
-		kind := "quiet"
+		kind := "tab"
 		if i == w.selected {
-			kind = "active"
+			kind = "tab-active"
 		}
 		name := p.state.Name
 		if p.shell != nil {
@@ -329,11 +337,11 @@ func (w *app) tabStrip() *widget.Container {
 		if len(runes) > 18 {
 			name = string(runes[:18]) + "…"
 		}
-		fill := w.colors().surface
-		if kind == "active" {
-			fill = w.colors().accentSoft
+		fill, border := w.colors().surface, w.colors().line
+		if kind == "tab-active" {
+			fill, border = w.colors().accentSoft, w.colors().accent
 		}
-		tab := widget.NewContainer(widget.ContainerOpts.BackgroundImage(w.skin(fill, fill, 6)), widget.ContainerOpts.Layout(widget.NewRowLayout(widget.RowLayoutOpts.Direction(widget.DirectionHorizontal))))
+		tab := widget.NewContainer(widget.ContainerOpts.BackgroundImage(w.skin(fill, border, 6)), widget.ContainerOpts.Layout(widget.NewRowLayout(widget.RowLayoutOpts.Direction(widget.DirectionHorizontal))))
 		title := w.action(name, kind, func() {
 			if !w.tabDrag.dragging && !w.tabDrag.canceled {
 				w.selectPage(i)
@@ -357,6 +365,14 @@ func (w *app) openFile() {
 func (w *app) tabMenu() {
 	w.show("管理当前标签", w.column(w.button("复制标签", func() { w.closeModal(); w.duplicate() }), w.button("重命名", func() { w.closeModal(); w.rename() }), w.button("向左移动", func() { w.closeModal(); w.move(-1) }), w.button("向右移动", func() { w.closeModal(); w.move(1) }), w.action("关闭标签", "danger", func() { w.closeModal(); w.closePage() })))
 }
+func (w *app) detailTools() {
+	w.show("详情工具", w.column(
+		w.button("快速过滤选中日志", func() { w.closeModal(); w.quickFilter() }),
+		w.button("查看与管理书签", func() { w.closeModal(); w.bookmarks() }),
+		w.button("设置与查看时间差", func() { w.closeModal(); w.timeDifference() }),
+		w.muted("选择日志后可拖选原文，使用 Ctrl/Cmd+C 复制。"),
+	))
+}
 func (w *app) logMenu() {
 	p := w.active()
 	if p == nil {
@@ -378,6 +394,11 @@ func (w *app) updateChrome() {
 			w.ui.Container.RequestRelayout()
 		}
 	}
+	updateLine := func(label *compactText, value string) {
+		if label != nil {
+			update(label.Text, value)
+		}
+	}
 	if w.sourceLabel != nil {
 		value := "Android 设备"
 		if p.offline != nil {
@@ -390,7 +411,7 @@ func (w *app) updateChrome() {
 				}
 			}
 		}
-		update(w.sourceLabel, value)
+		updateLine(w.sourceLabel, value)
 	}
 	if p.shell == nil {
 		scope := "实时"
@@ -404,7 +425,7 @@ func (w *app) updateChrome() {
 				grouped = fmt.Sprintf(" · 本页 %s 组", number(len(p.result.Rows)))
 			}
 		}
-		update(w.resultLabel, fmt.Sprintf("%s · %s 条%s · %s 处匹配", scope, number(p.result.Total), grouped, number(p.result.SearchCount)))
+		updateLine(w.resultLabel, fmt.Sprintf("%s · %s 条%s · %s 匹配", scope, number(p.result.Total), grouped, number(p.result.SearchCount)))
 	}
 	if w.connectionLabel != nil {
 		state, fg := "● 未连接", w.colors().muted
@@ -425,8 +446,10 @@ func (w *app) updateChrome() {
 		w.startActive = p.collector != nil
 		if w.startActive {
 			w.startButton.SetText("停止采集")
+			w.restyleAction(w.startButton, "danger")
 		} else {
 			w.startButton.SetText("开始采集")
+			w.restyleAction(w.startButton, "capture")
 		}
 	}
 	if w.pauseButton != nil {
@@ -442,15 +465,26 @@ func (w *app) updateChrome() {
 			w.pauseButton.SetText(label)
 		}
 	}
-	update(w.logToolsLabel, p.timeDifferenceText())
+	updateLine(w.logToolsLabel, p.timeDifferenceText())
 	if w.logSourceLabel != nil {
-		value := sourceLineText(p)
-		if e := selectedEntry(p); e != nil && e.SourceFile != "" {
-			value = value + " · " + sourcePreview(e.SourceFile, 70)
+		value := "点击日志查看原文 · 拖选文字可复制"
+		if e := selectedEntry(p); e != nil {
+			value = w.metadata(e)
 		}
-		update(w.logSourceLabel, value)
+		if p.state.File != "" {
+			value = sourceLineText(p)
+			if e := selectedEntry(p); e != nil && e.SourceFile != "" {
+				value += " · " + e.SourceFile
+			}
+		}
+		updateLine(w.logSourceLabel, value)
 	}
 	if w.cancelJobButton != nil {
+		visibility := widget.Visibility_Hide_Blocking
+		if p.busy {
+			visibility = widget.Visibility_Show
+		}
+		w.cancelJobButton.GetWidget().SetVisibility(visibility)
 		w.cancelJobButton.GetWidget().Disabled = !p.busy
 	}
 	update(w.foregroundLabel, w.foregroundFollowStatus())
@@ -468,26 +502,26 @@ func (w *app) updateChrome() {
 			w.recordActive = recording
 			if recording {
 				w.recordButton.SetText("● 录制中")
+				w.restyleAction(w.recordButton, "danger")
 			} else {
 				w.recordButton.SetText("录制")
+				w.restyleAction(w.recordButton, "quiet")
 			}
 		}
 	}
 	if w.followButton != nil && w.followActive != p.follow {
 		w.followActive = p.follow
-		body := w.colors().surface
-		border := body
+		kind := "quiet"
 		if p.follow {
-			body = w.colors().accentSoft
-			border = body
+			kind = "active"
 			w.followButton.SetText("跟随中")
 		} else {
 			w.followButton.SetText("跟随")
 		}
-		w.followButton.SetImage(&widget.ButtonImage{Idle: w.skin(body, border, 6), Hover: w.skin(w.colors().selection, w.colors().line, 6), Pressed: w.skin(w.colors().accentSoft, w.colors().accent, 6)})
+		w.restyleAction(w.followButton, kind)
 		w.ui.Container.RequestRelayout()
 	}
-	update(w.statusLabel, p.status)
+	updateLine(w.statusLabel, p.status)
 }
 func number(n int) string {
 	s := fmt.Sprint(n)

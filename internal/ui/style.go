@@ -11,14 +11,36 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
 )
 
-type palette struct{ bg, surface, elevated, sidebar, text, muted, line, accent, accentSoft, selection, success, danger color.NRGBA }
+// Keep text, control boundaries and action colors separate from decorative dividers.
+type palette struct {
+	bg, surface, elevated, sidebar, stripe, input    color.NRGBA
+	text, muted, line, controlBorder                 color.NRGBA
+	accent, accentSoft, selection                    color.NRGBA
+	primary, primaryHover, primaryPressed, onPrimary color.NRGBA
+	success, successSoft, danger, dangerSoft         color.NRGBA
+	highlight, onHighlight                           color.NRGBA
+}
 
 func rgb(r, g, b uint8) color.NRGBA { return color.NRGBA{r, g, b, 255} }
 func (w *app) colors() palette {
 	if w.lightTheme() {
-		return palette{rgb(238, 242, 247), rgb(255, 255, 255), rgb(246, 248, 252), rgb(248, 250, 253), rgb(35, 48, 68), rgb(110, 125, 147), rgb(222, 229, 239), rgb(48, 105, 225), rgb(232, 240, 255), rgb(225, 235, 253), rgb(30, 146, 107), rgb(207, 67, 81)}
+		return palette{
+			bg: rgb(239, 243, 248), surface: rgb(255, 255, 255), elevated: rgb(242, 246, 251), sidebar: rgb(248, 250, 253), stripe: rgb(247, 249, 252), input: rgb(255, 255, 255),
+			text: rgb(26, 39, 59), muted: rgb(80, 98, 122), line: rgb(213, 222, 234), controlBorder: rgb(128, 144, 166),
+			accent: rgb(33, 88, 192), accentSoft: rgb(233, 241, 255), selection: rgb(219, 233, 255),
+			primary: rgb(37, 92, 201), primaryHover: rgb(29, 78, 178), primaryPressed: rgb(25, 66, 151), onPrimary: rgb(255, 255, 255),
+			success: rgb(16, 112, 80), successSoft: rgb(225, 245, 235), danger: rgb(185, 43, 67), dangerSoft: rgb(255, 235, 239),
+			highlight: rgb(255, 224, 145), onHighlight: rgb(56, 40, 9),
+		}
 	}
-	return palette{rgb(15, 20, 29), rgb(23, 30, 42), rgb(30, 39, 54), rgb(19, 26, 37), rgb(227, 233, 244), rgb(137, 152, 176), rgb(43, 55, 74), rgb(115, 157, 255), rgb(33, 49, 80), rgb(31, 48, 75), rgb(90, 203, 159), rgb(247, 113, 128)}
+	return palette{
+		bg: rgb(13, 20, 31), surface: rgb(21, 30, 43), elevated: rgb(31, 44, 62), sidebar: rgb(17, 26, 38), stripe: rgb(25, 36, 51), input: rgb(13, 22, 35),
+		text: rgb(232, 239, 249), muted: rgb(163, 179, 200), line: rgb(48, 64, 85), controlBorder: rgb(104, 125, 151),
+		accent: rgb(142, 183, 255), accentSoft: rgb(33, 54, 84), selection: rgb(37, 63, 96),
+		primary: rgb(42, 91, 192), primaryHover: rgb(47, 99, 205), primaryPressed: rgb(34, 77, 165), onPrimary: rgb(255, 255, 255),
+		success: rgb(111, 222, 174), successSoft: rgb(23, 61, 49), danger: rgb(255, 152, 166), dangerSoft: rgb(75, 34, 47),
+		highlight: rgb(246, 204, 111), onHighlight: rgb(43, 32, 10),
+	}
 }
 
 type skinKey struct {
@@ -64,20 +86,48 @@ func (w *app) textLabel(s string, face *text.Face, c color.Color) *widget.Text {
 }
 func (w *app) muted(s string) *widget.Text   { return w.textLabel(s, &w.smallFace, w.colors().muted) }
 func (w *app) heading(s string) *widget.Text { return w.textLabel(s, &w.titleFace, w.foreground()) }
-func (w *app) action(s, kind string, fn func()) *widget.Button {
+func (w *app) buttonStyle(kind string) (*widget.ButtonImage, *widget.ButtonTextColor) {
 	c := w.colors()
-	idle, hover, pressed, border, fg := c.elevated, c.selection, c.accentSoft, c.line, c.text
+	idle, hover, pressed, border, fg := c.elevated, c.selection, c.accentSoft, c.controlBorder, c.text
 	switch kind {
 	case "primary":
-		idle, hover, pressed, border, fg = c.accent, rgb(95, 137, 241), rgb(58, 101, 200), c.accent, rgb(255, 255, 255)
-	case "quiet":
-		idle, border = c.surface, c.surface
+		idle, hover, pressed, border, fg = c.primary, c.primaryHover, c.primaryPressed, c.primary, c.onPrimary
+	case "quiet", "tab":
+		idle, border = color.NRGBA{}, color.NRGBA{}
+	case "tab-active":
+		idle, border, fg = color.NRGBA{}, color.NRGBA{}, c.accent
 	case "active":
-		idle, border, fg = c.accentSoft, c.accentSoft, c.accent
+		idle, border, fg = c.accentSoft, c.accent, c.accent
+	case "capture":
+		idle, hover, pressed, border, fg = c.successSoft, c.successSoft, c.selection, c.success, c.success
 	case "danger":
-		fg = c.danger
+		idle, hover, pressed, border, fg = c.dangerSoft, c.dangerSoft, c.selection, c.danger, c.danger
 	}
-	return widget.NewButton(widget.ButtonOpts.WidgetOpts(widget.WidgetOpts.MinSize(w.px(32), w.px(controlHeight)), w.hoverCursor(ebiten.CursorShapePointer)), widget.ButtonOpts.Image(&widget.ButtonImage{Idle: w.skin(idle, border, 6), Hover: w.skin(hover, c.line, 6), Pressed: w.skin(pressed, c.accent, 6), Disabled: w.skin(c.surface, c.line, 6)}), widget.ButtonOpts.Text(s, &w.uiFace, &widget.ButtonTextColor{Idle: fg, Hover: fg, Pressed: fg, Disabled: c.muted}), widget.ButtonOpts.TextPadding(&widget.Insets{Left: w.px(12), Right: w.px(12), Top: w.px(8), Bottom: w.px(8)}), widget.ButtonOpts.ClickedHandler(func(*widget.ButtonClickedEventArgs) { fn() }))
+	images := &widget.ButtonImage{
+		Idle: w.skin(idle, border, 6), Hover: w.skin(hover, c.accent, 6), Pressed: w.skin(pressed, c.accent, 6), Disabled: w.skin(c.elevated, c.line, 6),
+	}
+	colors := &widget.ButtonTextColor{Idle: fg, Hover: fg, Pressed: fg, Disabled: c.muted}
+	return images, colors
+}
+func (w *app) action(s, kind string, fn func()) *widget.Button {
+	images, colors := w.buttonStyle(kind)
+	button := widget.NewButton(widget.ButtonOpts.WidgetOpts(widget.WidgetOpts.MinSize(w.px(32), w.px(controlHeight)), w.hoverCursor(ebiten.CursorShapePointer)), widget.ButtonOpts.Image(images), widget.ButtonOpts.Text(s, &w.uiFace, colors), widget.ButtonOpts.TextPadding(&widget.Insets{Left: w.px(10), Right: w.px(10), Top: w.px(6), Bottom: w.px(6)}), widget.ButtonOpts.ClickedHandler(func(*widget.ButtonClickedEventArgs) { fn() }))
+	button.GetWidget().CustomData = colors
+	return button
+}
+func (w *app) restyleAction(button *widget.Button, kind string) {
+	images, colors := w.buttonStyle(kind)
+	button.SetImage(images)
+	if current, ok := button.GetWidget().CustomData.(*widget.ButtonTextColor); ok {
+		*current = *colors
+	}
+}
+
+// Cards group a task without adding heavy visual chrome to every control.
+func (w *app) card(content widget.PreferredSizeLocateableWidget, pad int) *widget.Container {
+	box := w.inset(content, pad, w.colors().surface)
+	box.SetBackgroundImage(w.skin(w.colors().surface, w.colors().line, 8))
+	return box
 }
 func (w *app) inset(content widget.PreferredSizeLocateableWidget, pad int, fill color.NRGBA) *widget.Container {
 	box := widget.NewContainer(widget.ContainerOpts.BackgroundImage(uiimage.NewNineSliceColor(fill)), widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(1), widget.GridLayoutOpts.Stretch([]bool{true}, []bool{true}), widget.GridLayoutOpts.Padding(widget.NewInsetsSimple(w.px(pad))))))

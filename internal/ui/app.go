@@ -81,8 +81,8 @@ type app struct {
 	support                                                       *support.Session
 	diagnosticErr                                                 error
 	diagnosticWarning                                             string
-	logToolsLabel                                                 *widget.Text
-	logSourceLabel                                                *widget.Text
+	logToolsLabel                                                 *compactText
+	logSourceLabel                                                *compactText
 	cancelJobButton                                               *widget.Button
 	backgroundDiagnostic                                          bool
 	profileScene                                                  string
@@ -113,10 +113,10 @@ type app struct {
 	previewStreams                                                []*core.ScreenStream
 	profileDeviceCopyDone                                         bool
 	face                                                          text.Face
-	uiFace, smallFace, titleFace                                  text.Face
+	uiFace, smallFace, titleFace, sectionFace                     text.Face
 	fontSource, monoSource                                        *text.GoTextFaceSource
 	skins                                                         map[skinKey]*uiimage.NineSlice
-	sourceLabel, resultLabel                                      *widget.Text
+	sourceLabel, resultLabel                                      *compactText
 	connectionLabel                                               *widget.Text
 	startButton, followButton, recordButton, pauseButton          *widget.Button
 	copyDetailButton, copyJSONButton                              *widget.Button
@@ -133,7 +133,7 @@ type app struct {
 	updateCheckCancel                                             context.CancelFunc
 	fileDirectory                                                 string
 	cursorShape                                                   ebiten.CursorShapeType
-	statusLabel                                                   *widget.Text
+	statusLabel                                                   *compactText
 	logPanel, detailPanel                                         *widget.Container
 	detailArea, detailSplitter                                    *widget.Container
 	detailDragging, detailDragChanged                             bool
@@ -191,8 +191,15 @@ func Run(activations <-chan struct{}, session *support.Session, diagnosticErr er
 	if deviceDiagnostic {
 		w.configWritable = false
 	}
-	w.width, w.height = w.px(1440), w.px(900)
 	w.backgroundDiagnostic = os.Getenv("LOGHELP_PROFILE_DIR") != "" && os.Getenv("LOGHELP_PROFILE_BACKGROUND") == "1"
+	previewWidth, previewHeight := 1440, 900
+	if w.backgroundDiagnostic {
+		if _, err := fmt.Sscanf(os.Getenv("LOGHELP_PROFILE_SIZE"), "%dx%d", &previewWidth, &previewHeight); err != nil {
+			previewWidth, previewHeight = 1440, 900
+		}
+		previewWidth, previewHeight = max(1000, min(previewWidth, 2560)), max(720, min(previewHeight, 1600))
+	}
+	w.width, w.height = w.px(previewWidth), w.px(previewHeight)
 	w.loadFace()
 	w.client, _ = core.DiscoverADB(config.ADB)
 	w.adb.Store(w.client)
@@ -253,7 +260,11 @@ func Run(activations <-chan struct{}, session *support.Session, diagnosticErr er
 	go w.monitor()
 	go w.monitorSystemTheme(w.systemColorMode)
 	defer w.shutdown()
-	ebiten.SetWindowSize(1440, 900)
+	if w.backgroundDiagnostic {
+		// An unfocused window is still visible. Hide it before RunGame starts.
+		ebiten.SetWindowVisible(false)
+	}
+	ebiten.SetWindowSize(previewWidth, previewHeight)
 	ebiten.SetWindowTitle(fmt.Sprintf("LogHelp %s r%d — Android 日志工作台", appVersion, appRevision))
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	ebiten.SetWindowSizeLimits(1000, 720, -1, -1)
@@ -287,6 +298,7 @@ func (w *app) loadFace() {
 	w.uiFace = &text.GoTextFace{Source: w.fontSource, Size: 14 * w.displayScale}
 	w.smallFace = &text.GoTextFace{Source: w.fontSource, Size: 12 * w.displayScale}
 	w.titleFace = &text.GoTextFace{Source: w.fontSource, Size: 20 * w.displayScale}
+	w.sectionFace = &text.GoTextFace{Source: w.fontSource, Size: 16 * w.displayScale}
 	if w.config.Theme == "system" {
 		ebiten.SetPreferredColorMode(ebiten.ColorModeUnknown)
 	} else if w.lightTheme() {
@@ -753,6 +765,7 @@ func (w *app) saveProfileSnapshot() {
 		fmt.Fprintln(os.Stderr, "profile snapshot:", err)
 		return
 	}
+	w.saveLayoutSnapshot()
 	err = png.Encode(file, pixels)
 	closeErr := file.Close()
 	if err != nil || closeErr != nil {
@@ -1119,7 +1132,7 @@ func (w *app) visibleRows() int {
 	}
 	return max(w.logPanel.GetWidget().Rect.Dy()/w.rowHeight(), 1)
 }
-func (w *app) rowHeight() int { return w.px(int(w.config.FontSize) + 18) }
+func (w *app) rowHeight() int { return w.px(int(w.config.FontSize) + 14) }
 func (w *app) panelRect() image.Rectangle {
 	if w.logPanel == nil {
 		return image.Rectangle{}

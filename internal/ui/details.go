@@ -71,7 +71,12 @@ func (layout *detailSplitLayout) Layout(children []widget.PreferredSizeLocateabl
 	}
 	_, groupMinimum := children[2].PreferredSize()
 	headerHeight := groupMinimum - layout.app.px(minDetailBody)
-	maximum := max(layout.app.px(minDetailBody), rect.Dy()-layout.app.px(minLogBody+detailDividerHeight)-headerHeight)
+	logMinimum := layout.app.px(minLogBody + detailDividerHeight)
+	if layout.app.rowHeader != nil {
+		_, height := layout.app.rowHeader.PreferredSize()
+		logMinimum += height
+	}
+	maximum := max(layout.app.px(minDetailBody), rect.Dy()-logMinimum-headerHeight)
 	bodyHeight := max(layout.app.px(minDetailBody), min(layout.app.px(layout.app.config.DetailHeight), maximum))
 	lowerHeight := headerHeight + bodyHeight
 	dividerY := rect.Max.Y - lowerHeight - layout.app.px(detailDividerHeight)

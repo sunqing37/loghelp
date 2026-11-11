@@ -96,7 +96,42 @@ func (w *app) openDevicePreview() {
 		w.choosePreviewDevice()
 		return
 	}
-	w.startDevicePreview(serial)
+	w.withOnlinePreviewDevice(serial, func() { w.startDevicePreview(serial) })
+}
+
+// Saved tab serials may still refer to USB after switching to Wi-Fi. Check
+// the live transports before reuse and let the user choose a new connection.
+func (w *app) withOnlinePreviewDevice(serial string, action func()) {
+	client, preview, owner := w.client, w.preview, w.modalWindow
+	if client == nil {
+		w.settings()
+		return
+	}
+	parent := w.ctx
+	if preview != nil {
+		parent = preview.ctx
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(parent, 5*time.Second)
+		defer cancel()
+		devices, err := client.Devices(ctx)
+		w.post(func() {
+			if w.closing.Load() || parent.Err() != nil || w.client != client || w.preview != preview || w.modalWindow != owner {
+				return
+			}
+			if err != nil {
+				w.message("读取投屏设备失败", err.Error())
+				return
+			}
+			for _, device := range devices {
+				if device.Serial == serial && device.State == "device" {
+					action()
+					return
+				}
+			}
+			w.choosePreviewDevice()
+		})
+	}()
 }
 
 func (w *app) choosePreviewDevice() {
@@ -170,12 +205,14 @@ func (w *app) reconnectDevicePreview() {
 	if d == nil {
 		return
 	}
-	w.cancelDeviceTouch()
-	w.cancelPreparingDeviceRecording(d)
-	w.replaceDevicePreviewStream(d, core.ScreenRecordingOptions{})
-	d.paused = false
-	d.status, d.notice = "正在重新连接视频投屏…", ""
-	w.updateDeviceChrome()
+	w.withOnlinePreviewDevice(d.serial, func() {
+		w.cancelDeviceTouch()
+		w.cancelPreparingDeviceRecording(d)
+		w.replaceDevicePreviewStream(d, core.ScreenRecordingOptions{})
+		d.deviceOffline, d.paused = false, false
+		d.status, d.notice = "正在重新连接视频投屏…", ""
+		w.updateDeviceChrome()
+	})
 }
 
 func (w *app) devicePanel() *widget.Container {
@@ -249,8 +286,8 @@ func (w *app) updateDeviceChrome() {
 	if d.paused {
 		d.pause.SetText("继续")
 	}
-	d.screenshot.GetWidget().Disabled = d.busy || d.saving
-	d.copyScreenshot.GetWidget().Disabled = d.busy || d.saving
+	d.screenshot.GetWidget().Disabled = d.busy || d.saving || d.deviceOffline
+	d.copyScreenshot.GetWidget().Disabled = d.busy || d.saving || d.deviceOffline
 	w.updateDeviceRecordingChrome(d)
 	for _, button := range d.keys {
 		button.GetWidget().Disabled = !d.ready || d.paused || d.failed || d.busy
@@ -261,7 +298,7 @@ func (w *app) updateDeviceChrome() {
 
 func (w *app) captureDeviceScreenshot(copyImage bool) {
 	d := w.preview
-	if d == nil || d.busy || d.saving {
+	if d == nil || d.busy || d.saving || d.deviceOffline {
 		return
 	}
 	w.cancelDeviceTouch()
@@ -423,7 +460,7 @@ func (w *app) updateDevicePreviewAvailability(devices []core.Device) {
 	}
 	d.deviceOffline = !online
 	if !online {
-		w.failDevicePreview(d, "设备离线或未授权，等待原设备上线…")
+		w.failDevicePreview(d, "设备离线或未授权；USB / Wi-Fi 切换后请点击重连或切换，选择在线连接。")
 		d.stream.Close()
 		return
 	}

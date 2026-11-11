@@ -435,8 +435,12 @@ func (w *app) updateChrome() {
 			state = "● 设备终端"
 		} else if p.collector != nil {
 			state = "● 连接中"
-			if strings.HasPrefix(p.collector.Status(), "采集中") {
+			status := p.collector.Status()
+			switch {
+			case strings.HasPrefix(status, "采集中 · "):
 				state, fg = "● 采集中", w.colors().success
+			case strings.HasPrefix(status, "采集中断"):
+				state = "● 等待重连"
 			}
 		}
 		w.connectionLabel.SetColor(fg)

@@ -143,6 +143,7 @@ type app struct {
 	modal                                                         bool
 	removeModal                                                   widget.RemoveWindowFunc
 	modalWindow                                                   *widget.Window
+	modalLayout                                                   func()
 	modalReturn                                                   func()
 	analysisCancel                                                func()
 	analysisPage                                                  *page

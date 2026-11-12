@@ -58,10 +58,14 @@ func (w *app) LayoutF(width, height float64) (float64, float64) {
 		w.loadFace()
 	}
 	width, height = max(width, 1000)*w.displayScale, max(height, 720)*w.displayScale
+	previousWidth, previousHeight := w.width, w.height
 	w.width, w.height = int(math.Ceil(width)), int(math.Ceil(height))
 	if changeScale {
 		w.rebuild()
 		w.restoreWorkspaceInputs(inputs)
+	}
+	if w.modalLayout != nil && (previousWidth != w.width || previousHeight != w.height) {
+		w.modalLayout()
 	}
 	return width, height
 }

@@ -567,7 +567,6 @@ func (w *app) showDialog(title string, content *widget.Container, primary *widge
 	}
 	w.modal = true
 	w.terminalFocus = false
-	cw, ch := content.PreferredSize()
 	padding, spacing := w.px(24), w.px(16)
 	header := w.stretchRow(w.heading(title), w.action("×", "quiet", w.closeModal))
 	footer := w.row(w.action("关闭", "quiet", w.closeModal))
@@ -576,31 +575,48 @@ func (w *app) showDialog(title string, content *widget.Container, primary *widge
 	}
 	hint := w.muted("Esc 关闭")
 	footerRow := w.stretchRow(hint, footer)
-	headerWidth, headerHeight := header.PreferredSize()
-	footerWidth, footerHeight := footerRow.PreferredSize()
-	width := min(w.width-w.px(80), max(w.px(520), min(max(cw, headerWidth, footerWidth)+2*padding, w.px(860))))
-	if title == "偏好设置" {
-		width = min(w.width-w.px(80), w.px(720))
-	}
-	// Measure the chrome instead of subtracting a guessed fixed height: button
-	// padding and font metrics can otherwise squeeze the body's last row.
-	chromeHeight := 2*padding + 2*spacing + headerHeight + footerHeight
-	bodyLimit := min(w.px(510), max(1, w.height-w.px(40)-chromeHeight))
-	bodyHeight := min(max(ch, w.px(2*controlHeight+12)), bodyLimit)
-	if ch > bodyHeight {
-		hint.Label = "滚轮浏览更多 · Esc 关闭"
-	}
-	height := bodyHeight + chromeHeight
 	container := widget.NewContainer(widget.ContainerOpts.BackgroundImage(w.skin(w.colors().surface, w.colors().line, 10)), widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(1), widget.GridLayoutOpts.Stretch([]bool{true}, []bool{false, true, false}), widget.GridLayoutOpts.Padding(widget.NewInsetsSimple(padding)), widget.GridLayoutOpts.Spacing(0, spacing))))
-	var body widget.PreferredSizeLocateableWidget = w.scrollBox(content, bodyHeight)
-	if title == "版本更新" {
-		// Only release notes scroll; version, status and actions stay in place.
-		body = content
+	var scroller *widget.ScrollContainer
+	var body widget.PreferredSizeLocateableWidget = content
+	if title != "版本更新" {
+		scroller = w.scrollBox(content, 1)
+		body = scroller
+	} else {
+		// These dialogs own their scrollable content; keep navigation, status and
+		// actions fixed rather than adding another scroll container around them.
 	}
 	container.AddChild(header, body, footerRow)
-	left, top := (w.width-width)/2, (w.height-height)/2
-	window := widget.NewWindow(widget.WindowOpts.Contents(container), widget.WindowOpts.Modal(), widget.WindowOpts.BlockLower(true), widget.WindowOpts.Location(image.Rect(left, top, left+width, top+height)))
+	window := widget.NewWindow(widget.WindowOpts.Contents(container), widget.WindowOpts.Modal(), widget.WindowOpts.BlockLower(true))
+	// Resize the existing window and controls. Reopening a dialog here would
+	// discard edits/focus and cancel its in-flight device or network request.
+	w.modalLayout = func() {
+		cw, ch := content.PreferredSize()
+		headerWidth, headerHeight := header.PreferredSize()
+		footerWidth, footerHeight := footerRow.PreferredSize()
+		width := min(w.width-w.px(80), max(w.px(520), min(max(cw, headerWidth, footerWidth)+2*padding, w.px(860))))
+		if title == "偏好设置" {
+			width = min(w.width-w.px(80), w.px(720))
+		}
+		chromeHeight := 2*padding + 2*spacing + headerHeight + footerHeight
+		bodyLimit := min(w.px(510), max(1, w.height-w.px(40)-chromeHeight))
+		bodyHeight := min(max(ch, w.px(2*controlHeight+12)), bodyLimit)
+
+		hint.Label = "Esc 关闭"
+		if scroller != nil {
+			scroller.GetWidget().MinHeight = bodyHeight
+			scroller.GetWidget().LayoutData = widget.GridLayoutData{MaxHeight: bodyHeight}
+			if ch > bodyHeight {
+				hint.Label = "滚轮浏览更多 · Esc 关闭"
+			}
+		}
+		height := bodyHeight + chromeHeight
+		left, top := (w.width-width)/2, (w.height-height)/2
+		window.SetLocation(image.Rect(left, top, left+width, top+height))
+		window.RequestRelayout()
+		w.renderDirty = true
+	}
 	w.modalWindow = window
+	w.modalLayout()
 	w.removeModal = w.ui.AddWindow(window)
 }
 func (w *app) closeModal() {
@@ -617,6 +633,7 @@ func (w *app) closeModal() {
 	}
 	w.modal = false
 	w.modalWindow = nil
+	w.modalLayout = nil
 	w.ui.ClearFocus()
 	if back != nil {
 		back()
@@ -624,12 +641,16 @@ func (w *app) closeModal() {
 }
 
 func (w *app) showNestedDialog(title string, content *widget.Container) {
-	parent, parentScene, parentReturn := w.modalWindow, w.profileScene, w.modalReturn
+	parent, parentScene, parentReturn, parentLayout := w.modalWindow, w.profileScene, w.modalReturn, w.modalLayout
 	w.show(title, content)
 	if parent != nil {
 		w.modalReturn = func() {
 			w.modal, w.modalWindow, w.profileScene = true, parent, parentScene
 			w.modalReturn = parentReturn
+			w.modalLayout = parentLayout
+			if w.modalLayout != nil {
+				w.modalLayout()
+			}
 			w.removeModal = w.ui.AddWindow(parent)
 			w.ui.Container.RequestRelayout()
 			w.renderDirty = true

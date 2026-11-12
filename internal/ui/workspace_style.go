@@ -33,7 +33,7 @@ func (w *app) oneLine(value string, small bool, width int) *compactText {
 }
 
 func (label *compactText) PreferredSize() (int, int) {
-	width, height := text.Measure(label.Label, *label.face, 0)
+	width, height := text.Measure(singleLineInput(label.Label), *label.face, 0)
 	if label.MaxWidth > 0 {
 		width = math.Min(width, label.MaxWidth)
 	}
@@ -46,7 +46,7 @@ func (label *compactText) Render(screen *ebiten.Image) {
 		return
 	}
 	full, limit := label.Label, label.MaxWidth
-	label.Label = fitFace(full, float64(max(label.GetWidget().Rect.Dx(), 0)), *label.face)
+	label.Label = fitFace(singleLineInput(full), float64(max(label.GetWidget().Rect.Dx(), 0)), *label.face)
 	label.MaxWidth = 0
 	label.Text.Render(screen.SubImage(clip).(*ebiten.Image))
 	label.Label, label.MaxWidth = full, limit
@@ -75,7 +75,9 @@ func (w *app) sectionTitle(value string) *widget.Text {
 
 func (w *app) workspaceWidth() int {
 	width := w.width - w.px(224+28)
-	if w.preview != nil {
+	if w.deviceFilesVisible() {
+		width -= w.px(deviceFilesPanelWidth)
+	} else if w.preview != nil {
 		width -= w.px(320)
 	}
 	return max(width, w.px(200))

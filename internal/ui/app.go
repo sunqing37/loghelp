@@ -75,6 +75,7 @@ type app struct {
 	importMu                                                      sync.Mutex
 	importSources                                                 map[*core.Offline]bool
 	installer                                                     *appInstaller
+	explorer                                                      *deviceFileExplorer
 	triggerWorkers                                                []<-chan struct{}
 	restart                                                       *core.RestartRequest
 	restarting                                                    bool

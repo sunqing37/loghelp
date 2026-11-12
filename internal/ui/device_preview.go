@@ -78,6 +78,10 @@ func Fragment(position vec4, texCoord vec2, color vec4) vec4 {
 
 func (w *app) openDevicePreview() {
 	if w.preview != nil {
+		if w.deviceFilesVisible() {
+			w.closeDeviceFiles()
+			return
+		}
 		w.closeDevicePreview()
 		return
 	}
@@ -177,7 +181,7 @@ func (w *app) disposeDevicePreview() {
 
 func (w *app) closeDevicePreview() {
 	w.disposeDevicePreview()
-	ebiten.SetWindowSizeLimits(1000, 720, -1, -1)
+	w.resizeDeviceDock()
 	w.rebuildDeviceLayout()
 }
 
@@ -192,11 +196,10 @@ func (w *app) startDevicePreview(serial string) {
 	w.preview = &devicePreview{client: w.client, serial: serial, ctx: ctx, cancel: cancel, shader: shader, status: "正在连接视频投屏…", statsAt: time.Now(), clipboardEnabled: !w.backgroundDiagnostic}
 	w.preview.stream = core.StartScreenStream(ctx, w.client, serial)
 	w.previewStreams = append(w.previewStreams, w.preview.stream)
-	ebiten.SetWindowSizeLimits(1440, 720, -1, -1)
-	width, height := ebiten.WindowSize()
-	if width < 1440 {
-		ebiten.SetWindowSize(1440, height)
+	if w.explorer != nil {
+		w.explorer.visible = false
 	}
+	w.resizeDeviceDock()
 	w.rebuildDeviceLayout()
 }
 
@@ -218,7 +221,7 @@ func (w *app) reconnectDevicePreview() {
 func (w *app) devicePanel() *widget.Container {
 	d := w.preview
 	w.cancelDeviceTouch()
-	header := w.stretchRow(w.label("设备投屏"), w.row(w.action("切换", "quiet", w.choosePreviewDevice), w.action("×", "quiet", w.closeDevicePreview)))
+	header := w.stretchRow(w.row(w.action("文件", "quiet", w.openDeviceFiles), w.action("预览", "active", func() {})), w.row(w.action("切换", "quiet", w.choosePreviewDevice), w.action("×", "quiet", w.closeDevicePreview)))
 	serial := w.muted(d.serial)
 	serial.MaxWidth = float64(w.px(288))
 	d.pause = w.action("暂停", "quiet", func() { w.cancelDeviceTouch(); d.paused = !d.paused; w.updateDeviceChrome() })
@@ -541,7 +544,7 @@ func (w *app) updateDevicePreview(allowInput bool) {
 		w.profileDeviceCopyDone = true
 		w.captureDeviceScreenshot(true)
 	}
-	if !allowInput || w.modal || d.busy || !d.ready || d.paused || d.failed || d.frameSize.X == 0 {
+	if !allowInput || w.modal || d.panel == nil || d.busy || !d.ready || d.paused || d.failed || d.frameSize.X == 0 {
 		w.cancelDeviceTouch()
 		return
 	}

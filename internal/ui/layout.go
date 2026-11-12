@@ -88,6 +88,16 @@ func (w *app) inputRow(label string, entry *boundedInput, buttons ...widget.Pref
 }
 
 func (w *app) rebuild() {
+	if w.preview != nil {
+		w.cancelDeviceTouch()
+		w.preview.panel = nil
+	}
+	if w.explorer != nil {
+		for _, input := range w.explorer.inputs {
+			input.disposeBuffer()
+		}
+		w.explorer.body = nil
+	}
 	w.finishColumnResize()
 	w.cursorShape = ebiten.CursorShapeDefault
 	w.tabWidgets = nil
@@ -116,17 +126,21 @@ func (w *app) rebuild() {
 	root := widget.NewContainer(widget.ContainerOpts.BackgroundImage(uiimage.NewNineSliceColor(c.bg)), widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(1), widget.GridLayoutOpts.Stretch([]bool{true}, []bool{false, true, false}))))
 	brand := w.row(w.action("L", "active", func() { w.help() }), w.heading("LogHelp"), w.muted(appVersionLabel), w.muted("Android 日志工作台"))
 	previewKind := "quiet"
-	if w.preview != nil {
+	if w.preview != nil && !w.deviceFilesVisible() {
 		previewKind = "active"
 	}
-	chrome := w.toolbar(brand, w.row(w.action("文件", "quiet", w.fileMenu), w.action("安装应用", "quiet", w.openAppInstaller), w.action("设备预览", previewKind, w.openDevicePreview), w.action("终端", "quiet", w.openTerminal), w.action("录制管理", "quiet", w.recordings), w.action("设置", "quiet", w.settings)), func() int { return w.width - w.px(24) })
+	filesKind := "quiet"
+	if w.deviceFilesVisible() {
+		filesKind = "active"
+	}
+	chrome := w.toolbar(brand, w.row(w.action("文件", "quiet", w.fileMenu), w.action("设备文件", filesKind, w.openDeviceFiles), w.action("安装应用", "quiet", w.openAppInstaller), w.action("设备预览", previewKind, w.openDevicePreview), w.action("终端", "quiet", w.openTerminal), w.action("录制管理", "quiet", w.recordings), w.action("设置", "quiet", w.settings)), func() int { return w.width - w.px(24) })
 	root.AddChild(w.inset(chrome, 12, c.surface))
 	w.ui = &ebitenui.UI{Container: root, PostRenderHook: w.drawPanels}
 	if p == nil {
 		return
 	}
 	columns, stretch := 2, []bool{false, true}
-	if w.preview != nil {
+	if w.preview != nil || w.deviceFilesVisible() {
 		columns, stretch = 3, []bool{false, true, false}
 	}
 	workspace := widget.NewContainer(widget.ContainerOpts.Layout(widget.NewGridLayout(widget.GridLayoutOpts.Columns(columns), widget.GridLayoutOpts.Stretch(stretch, []bool{true}))))
@@ -241,7 +255,9 @@ func (w *app) rebuild() {
 		}
 	}
 	workspace.AddChild(w.inset(main, 14, c.bg))
-	if w.preview != nil {
+	if w.deviceFilesVisible() {
+		workspace.AddChild(w.deviceFilesPanel())
+	} else if w.preview != nil {
 		workspace.AddChild(w.devicePanel())
 	}
 	root.AddChild(workspace)

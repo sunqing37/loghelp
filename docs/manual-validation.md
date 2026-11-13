@@ -1377,3 +1377,9 @@ APK 采用 pm install-create -r、逐包 install-write -S 与 install-commit，�
 - 待手动验收：持续采集及实时筛选时按钮不闪现；离线导入、扫描、定位时可取消，完成或取消后隐藏；标签切换和布局重建时显示状态正确。未运行 GUI，其他系统未编译或实际运行。
 
 - 用户授权更新 EXE 后，确认原路径程序未运行；旧版备份至 `artifacts/loghelp-before-cancel-button-fix-20261113-105057-864.exe` 并核对备份哈希。执行一次 Windows amd64 完整桌面构建，更新 `bin/loghelp.exe`，完成时间 `2026-11-13T10:51:08.833879+08:00`，SHA-256 `a9fc17fca8b098f80506d7f13c7fd767941ac914fe0edfb8294423a569c644c9`；源码指纹与产物哈希核对通过。未自动启动，GUI 效果仍待手动验收。
+
+## 2026-11-13：0.0.6 发布构建
+
+- 用户明确要求将累计改动发布为 0.0.6，修订号保持 0；包含设备文件管理、终端历史、安装进度、布局和连接修复及取消任务按钮修复。
+- 串行完成 Windows/macOS/Linux × amd64/arm64 六平台 CGO_ENABLED=0 桌面构建；全部源码指纹和二进制 SHA-256 与成功记录一致，记录位于 `artifacts/release-0.0.6/preflight.json`。Windows `--version` 返回 `LogHelp 0.0.6 r0`。
+- 用户退出程序后更新 `bin/loghelp.exe`，原文件备份 `artifacts/loghelp-before-0.0.6.exe`；本轮未新增自动测试、未重复 GUI 交互、安装器实装或自动更新替换回滚，其他系统仅交叉构建。

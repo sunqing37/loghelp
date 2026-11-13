@@ -26,6 +26,7 @@ func (w *app) beginPageJob(p *page, title string, total int64) (context.Context,
 	p.job++
 	job := p.job
 	p.busy = true
+	p.showJobCancel = true
 	p.status = title + " · 可从更多菜单取消"
 	var last time.Time
 	progress := func(done int64) {

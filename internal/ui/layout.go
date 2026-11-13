@@ -500,12 +500,13 @@ func (w *app) updateChrome() {
 		updateLine(w.logSourceLabel, value)
 	}
 	if w.cancelJobButton != nil {
+		showCancel := p.busy && p.showJobCancel
 		visibility := widget.Visibility_Hide_Blocking
-		if p.busy {
+		if showCancel {
 			visibility = widget.Visibility_Show
 		}
 		w.cancelJobButton.GetWidget().SetVisibility(visibility)
-		w.cancelJobButton.GetWidget().Disabled = !p.busy
+		w.cancelJobButton.GetWidget().Disabled = !showCancel
 	}
 	update(w.foregroundLabel, w.foregroundFollowStatus())
 	if w.copyDetailButton != nil {

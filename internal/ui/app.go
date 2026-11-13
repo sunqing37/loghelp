@@ -34,6 +34,9 @@ var appRevision = loghelp.Revision
 var appVersionLabel = fmt.Sprintf("v%s · r%d", appVersion, appRevision)
 
 type page struct {
+	// showJobCancel distinguishes explicit jobs from routine live queries.
+	showJobCancel bool
+
 	triggerCancel                                    context.CancelFunc
 	triggerID                                        uint64
 	triggerStatus                                    string
@@ -909,6 +912,7 @@ func (w *app) refresh(p *page, force bool) {
 	p.job++
 	job := p.job
 	p.busy = true
+	p.showJobCancel = p.offline != nil
 	source, collector := p.offline, p.collector
 	q, search, pkg, after, offset := p.query, p.search, p.state.Package, p.clearSeq, p.offset
 	mergeLines := p.state.MergeLines
